@@ -74,6 +74,7 @@ namespace DinoLino.Utilities
                 pixels, w, h, stride, bpp, bgPalette, hardSeedCorners,
                 tightThreshold: adaptiveThreshold * 0.6,
                 relaxedThreshold: adaptiveThreshold);
+            bgMask = KeepIfTrustworthy(bgMask, w, h, "background model");
             token.ThrowIfCancellationRequested();
 
             var snap = new ImageSnapshot(pixels, bgMask, w, h, stride, bpp);
@@ -108,6 +109,7 @@ namespace DinoLino.Utilities
                 flattened, w, h, stride, bpp, flatPalette, flatCorners,
                 tightThreshold: flatThreshold * 0.6,
                 relaxedThreshold: flatThreshold);
+            flatBgMask = KeepIfTrustworthy(flatBgMask, w, h, "flattened background model");
             token.ThrowIfCancellationRequested();
 
             SamImageState samState = null;
@@ -134,6 +136,28 @@ namespace DinoLino.Utilities
                 FlattenedBackgroundMask = flatBgMask,
                 SamState = samState
             };
+        }
+
+        /// A background model has to account for most of the frame band it was built
+        /// from. Set low enough that a subject running off the edge of the picture — it
+        /// may occupy a third of that band legitimately — keeps its model, and high
+        /// enough to catch a palette that has understood neither side.
+        private const double MinBorderBandExplained = 0.60;
+
+        /// Returns the model, or null when it cannot explain the border band. Null is a
+        /// supported state everywhere downstream — the flood stops treating any pixel
+        /// as off-limits and distances fall back to "how far from the frame edge" —
+        /// whereas a model that has wandered into the subject silently truncates every
+        /// flood at the subject's own pixels. No model beats a wrong one.
+        private static bool[] KeepIfTrustworthy(bool[] mask, int w, int h, string what)
+        {
+            double explained = OutlineProcessor.BorderBandExplained(mask, w, h);
+            if (explained >= MinBorderBandExplained) return mask;
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[outline] {what} discarded — explains only {explained:P0} of the border band " +
+                $"(needs {MinBorderBandExplained:P0}); segmenting without one");
+            return null;
         }
     }
 
@@ -359,7 +383,13 @@ namespace DinoLino.Utilities
 
             // Size-veto threshold. Cap peak distance so a sparse/failed background
             // mask can only weaken the veto, never reject correct ordinary masks.
-            int peakDist = clickOnBg ? 0 : a.DistToBackground[sy * a.Width + sx];
+            // With no background model at all the distances measure nothing but the
+            // way to the frame edge, which says nothing about how big the subject
+            // ought to be, so the veto stands down rather than sizing itself off the
+            // picture's dimensions.
+            int peakDist = (clickOnBg || a.BackgroundMask == null)
+                ? 0
+                : a.DistToBackground[sy * a.Width + sx];
             peakDist = Math.Min(peakDist, Math.Min(a.Width, a.Height) / 8);
             int minPlausibleArea = Math.Max(settings.MinAreaPixels,
                 (int)(0.5 * Math.PI * (double)peakDist * peakDist));

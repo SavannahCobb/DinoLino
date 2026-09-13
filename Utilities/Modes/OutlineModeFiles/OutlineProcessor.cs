@@ -540,6 +540,42 @@ namespace DinoLino.Utilities
             return level;
         }
 
+        /// Width of the frame band a background model is judged on.
+        internal static int BorderBandWidth(int w, int h) =>
+            Math.Max(4, Math.Min(25, Math.Min(w, h) / 12));
+
+        /// How much of the frame's own outer band a background model accounts for.
+        /// <para>
+        /// The model is built from that band, so it should explain nearly all of it. A
+        /// low figure means the palette does not describe this background — a scene
+        /// whose background spans everything from bright shell grit to the shadow
+        /// between grains cannot be six colours, and the entries that survive the
+        /// clustering describe none of it. Such a model is worse than none: it leaves
+        /// most of the background unclaimed while still finding enough of a colour
+        /// match to march into the subject.
+        /// </para>
+        internal static double BorderBandExplained(bool[] backgroundMask, int w, int h)
+        {
+            if (backgroundMask == null || backgroundMask.Length < w * h) return 0;
+
+            int band = BorderBandWidth(w, h);
+            long total = 0, covered = 0;
+
+            for (int y = 0; y < h; y++)
+            {
+                bool edgeRow = y < band || y >= h - band;
+                int row = y * w;
+                for (int x = 0; x < w; x++)
+                {
+                    if (!edgeRow && x >= band && x < w - band) continue;
+                    total++;
+                    if (backgroundMask[row + x]) covered++;
+                }
+            }
+
+            return total > 0 ? (double)covered / total : 0;
+        }
+
         /// Percentile of the gradient distribution via a coarse sqrt(gradient)
         /// histogram. Computed once per image to calibrate the edge cutoff.
         internal static int GradientPercentileThreshold(int[] gradient, double percentile)
