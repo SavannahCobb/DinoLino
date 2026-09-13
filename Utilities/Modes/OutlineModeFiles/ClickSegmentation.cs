@@ -206,10 +206,16 @@ namespace DinoLino.Utilities
         // every faint ripple in it read as a boundary. ~9 luma levels.
         private const int MinEdgeGradient = 120_000;
 
-        // How far either side of the boundary the two sides are sampled, and the
-        // smallest usable number of samples per side.
-        private const int BandSampleRadius = 6;
-        private const int BandMinSamples = 24;
+        // How far either side of the boundary the two sides are sampled. Several
+        // distances, because a handful of samples at one distance is a noisy account
+        // of what a material looks like.
+        private static readonly int[] BandSampleRadii = { 4, 6, 8 };
+
+        // Samples needed on each side at one rim pixel before that pixel has an
+        // opinion, and the share of the rim that must have one before the whole term
+        // is believed.
+        private const int MinSamplesPerSide = 3;
+        private const double MinMeasurableRimFraction = 0.15;
 
         // Colour difference across the boundary, in PerceptualDistance units, that
         // earns half marks. Sets where "these are two different materials" starts.
@@ -221,6 +227,12 @@ namespace DinoLino.Utilities
 
         // Masks at or above this already hug the image edges, so GmmRefine is skipped.
         private const double RefinementSkipScore = 0.72;
+
+        // What the neural candidate has to clear. Far below AcceptableMaskScore on
+        // purpose: it is a "this mask is not broken" test, not a quality contest with
+        // the floods, which the score cannot referee on a subject whose own markings
+        // are bolder than its silhouette.
+        private const double NeuralSanityScore = 0.20;
 
         private readonly OutlineProcessor _proc = new OutlineProcessor();
 
@@ -250,10 +262,13 @@ namespace DinoLino.Utilities
             int w = snap.Width, h = snap.Height;
             long rim = 0, rimOnEdge = 0, area = 0, borderFg = 0, borderTotal = 0;
 
-            // Colour accumulated either side of the boundary, sampled as the rim is
-            // walked so no second pass over the image is needed.
-            long inR = 0, inG = 0, inB = 0, inCount = 0;
-            long outR = 0, outG = 0, outB = 0, outCount = 0;
+            // Band contrast is accumulated PER RIM PIXEL, each judged against its own
+            // two sides. One average taken around the whole boundary cancels itself on
+            // any subject with a pale flank and a dark one — a bird with a white breast
+            // and brown wing averages, inside and out, to the same middling colour, and
+            // a perfect outline of it then reads as no contrast at all.
+            double contrastSum = 0;
+            long contrastCount = 0;
 
             for (int y = 0; y < h; y++)
             {
@@ -292,22 +307,38 @@ namespace DinoLino.Utilities
                     long bar = Math.Max((long)(localLevel * LocalEdgeMultiple), MinEdgeGradient);
                     if (g >= bar) rimOnEdge++;
 
-                    // Step out along each compass direction and let the mask say which
-                    // side that sample landed on.
-                    for (int d = 0; d < BandDx.Length; d++)
+                    // Step out along each compass direction, at each distance, and let
+                    // the mask say which side that sample landed on.
+                    long inR = 0, inG = 0, inB = 0, inCount = 0;
+                    long outR = 0, outG = 0, outB = 0, outCount = 0;
+
+                    for (int ri = 0; ri < BandSampleRadii.Length; ri++)
                     {
-                        int sx = x + BandDx[d] * BandSampleRadius;
-                        int sy = y + BandDy[d] * BandSampleRadius;
-                        if (sx < 0 || sx >= w || sy < 0 || sy >= h) continue;
+                        int radius = BandSampleRadii[ri];
+                        for (int d = 0; d < BandDx.Length; d++)
+                        {
+                            int sx = x + BandDx[d] * radius;
+                            int sy = y + BandDy[d] * radius;
+                            if (sx < 0 || sx >= w || sy < 0 || sy >= h) continue;
 
-                        int pi = sy * snap.Stride + sx * snap.Bpp;
-                        int pr, pg, pb;
-                        if (snap.Bpp == 1) { pr = pg = pb = snap.Pixels[pi]; }
-                        else { pb = snap.Pixels[pi]; pg = snap.Pixels[pi + 1]; pr = snap.Pixels[pi + 2]; }
+                            int pi = sy * snap.Stride + sx * snap.Bpp;
+                            int pr, pg, pb;
+                            if (snap.Bpp == 1) { pr = pg = pb = snap.Pixels[pi]; }
+                            else { pb = snap.Pixels[pi]; pg = snap.Pixels[pi + 1]; pr = snap.Pixels[pi + 2]; }
 
-                        if (mask[sy * w + sx]) { inR += pr; inG += pg; inB += pb; inCount++; }
-                        else { outR += pr; outG += pg; outB += pb; outCount++; }
+                            if (mask[sy * w + sx]) { inR += pr; inG += pg; inB += pb; inCount++; }
+                            else { outR += pr; outG += pg; outB += pb; outCount++; }
+                        }
                     }
+
+                    if (inCount < MinSamplesPerSide || outCount < MinSamplesPerSide) continue;
+
+                    double step = OutlineProcessor.PerceptualDistance(
+                        (double)inR / inCount, (double)inG / inCount, (double)inB / inCount,
+                        (double)outR / outCount, (double)outG / outCount, (double)outB / outCount);
+
+                    contrastSum += step / (step + BandContrastHalf);
+                    contrastCount++;
                 }
             }
             if (area == 0 || rim == 0) return 0;
@@ -317,17 +348,12 @@ namespace DinoLino.Utilities
             double areaFraction = (double)area / ((long)w * h);
             double sizeFactor = areaFraction > 0.9 ? 0.1 : 1.0;
 
-            // A mask too thin to have an inside worth sampling gets a neutral factor
-            // rather than a zero: the term could not be measured, which is not evidence
-            // against the mask.
+            // A mask too thin for most of its rim to have an inside worth sampling gets
+            // a neutral factor rather than a low one: the term could not be measured,
+            // which is not evidence against the mask.
             double bandContrast = 1.0;
-            if (inCount >= BandMinSamples && outCount >= BandMinSamples)
-            {
-                double d = OutlineProcessor.PerceptualDistance(
-                    (double)inR / inCount, (double)inG / inCount, (double)inB / inCount,
-                    (double)outR / outCount, (double)outG / outCount, (double)outB / outCount);
-                bandContrast = d / (d + BandContrastHalf);
-            }
+            if (contrastCount >= Math.Max(8, (long)(MinMeasurableRimFraction * rim)))
+                bandContrast = contrastSum / contrastCount;
 
             return edgeAlignment * bandContrast
                    * (1.0 - Math.Min(1.0, borderLeak * 3.0)) * sizeFactor;
@@ -399,9 +425,20 @@ namespace DinoLino.Utilities
             string bestName = "none";
             var diag = new System.Text.StringBuilder();
 
+            int seedIdx = sy * a.Width + sx;
+
             double Score(bool[] m)
             {
                 if (m == null) return 0;
+
+                // The answer to a click has to contain the click. Floods and watershed
+                // grow from the seed and cannot do otherwise, but the neural mask is
+                // prompted with the point rather than grown from it, so a model that is
+                // not reading this image properly can return a confident, plausibly
+                // shaped region somewhere else entirely. Whatever that is, it is not
+                // what the user pointed at.
+                if (!m[clickIdx] && !m[seedIdx]) return 0;
+
                 if (!_proc.HasMinimumPixels(m, minPlausibleArea)) return 0; // size veto
                 return ScoreMask(m, snap, a.Gradient, a.LocalGradientLevel);
             }
@@ -450,7 +487,21 @@ namespace DinoLino.Utilities
 
                     bool[] neural = SamSegmenter.Shared?.Segment(
                         a.SamState, prompts, a.Width, a.Height, token);
-                    if (neural != null && Consider("neural", neural)) return Finish(best);
+
+                    // The neural candidate is held to a sanity bar rather than made to
+                    // out-score the floods. ScoreMask reads the boundary, and a
+                    // boundary cannot distinguish one animal from one part of one: an
+                    // outline drawn round a bird's breast follows a real colour change
+                    // the whole way and scores as well as the outline round the bird.
+                    // Knowing that the breast and the wing are the same creature is the
+                    // judgement the model is here to make, so the score is used only to
+                    // catch a mask that is plainly broken — mostly frame, leaking off
+                    // the edge, or too small to be the subject.
+                    if (neural != null)
+                    {
+                        Consider("neural", neural);
+                        if (bestScore >= NeuralSanityScore) return Finish(best);
+                    }
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -683,6 +734,18 @@ namespace DinoLino.Utilities
         private readonly object _decodeLock = new object();
         private bool _normalize = NormalizeEncoderInput;
 
+        // How well the pair segmented a synthetic square at construction. Below this
+        // the encoder and decoder are not speaking the same language — the embedding
+        // one produces is not the one the other expects — and every mask that follows
+        // is a confident-looking shape unrelated to the picture. Classical
+        // segmentation is wrong sometimes; this is wrong in a way no score can catch,
+        // because the mask is well formed, just not about this image.
+        private const double MinCalibrationIoU = 0.50;
+        private double _calibrationIoU = -1.0;
+
+        /// <summary>True when the encoder/decoder pair proved itself on a known shape.</summary>
+        internal bool IsUsable => _calibrationIoU >= MinCalibrationIoU;
+
         // =====================
         // Singleton access
         // =====================
@@ -704,6 +767,18 @@ namespace DinoLino.Utilities
                         _initTried = true;
                         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                         _shared = TryCreate(Path.Combine(baseDir, "Models")) ?? TryCreate(baseDir);
+
+                        // A pair that failed its own calibration is put down here rather
+                        // than left to hand out masks the rest of the session.
+                        if (_shared != null && !_shared.IsUsable)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                "[sam] the encoder and decoder do not agree — rejecting the pair " +
+                                "and using the classical pipeline only");
+                            _shared.Dispose();
+                            _shared = null;
+                        }
+
                         System.Diagnostics.Debug.WriteLine(_shared != null
                             ? "[sam] models loaded — neural candidate enabled"
                             : "[sam] no usable models found — classical pipeline only");
@@ -790,8 +865,10 @@ namespace DinoLino.Utilities
             }
             catch (Exception ex)
             {
+                // _calibrationIoU stays below the bar, so the pair is refused. A model
+                // that cannot segment a plain square is not one to trust with a photo.
                 System.Diagnostics.Debug.WriteLine(
-                    $"[sam] calibration failed: {ex.Message} — using default normalize={_normalize}");
+                    $"[sam] calibration failed: {ex.Message} — the neural candidate is disabled");
             }
         }
 
@@ -842,9 +919,10 @@ namespace DinoLino.Utilities
             double iouNormalized = IoUFor(true);
             double iouRaw = IoUFor(false);
             _normalize = iouNormalized >= iouRaw;
+            _calibrationIoU = Math.Max(iouNormalized, iouRaw);
 
-            string note = Math.Max(iouNormalized, iouRaw) < 0.5
-                ? " (LOW CONFIDENCE — check that the encoder/decoder pair matches)"
+            string note = _calibrationIoU < MinCalibrationIoU
+                ? " (FAILED — the pair does not match; the neural candidate is disabled)"
                 : "";
 
             System.Diagnostics.Debug.WriteLine(
