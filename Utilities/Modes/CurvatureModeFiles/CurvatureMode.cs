@@ -31,7 +31,10 @@ namespace DinoLino.Utilities.Modes
             NPointSpline
         }
 
-        public enum SplineAlgorithm { CatmullRom, Bezier }
+        // How the spline's shape is arrived at. The first two take clicked control
+        // points; Freehand takes a dragged stroke and reduces it to control points of
+        // its own, so all three end up measured by the same code.
+        public enum SplineAlgorithm { CatmullRom, Bezier, Freehand }
 
         private CurvatureMethod _currentMethod = CurvatureMethod.None;
         public CurvatureMethod CurrentMethod
@@ -234,6 +237,9 @@ namespace DinoLino.Utilities.Modes
             CurrentOperation.Clear();
             _splinePoints.Clear();
             _splinePreview = null;
+            _freehandDrawing = false;
+            _freehandPreview = null;
+            _freehandStroke.Clear();
         }
 
         // Leaves probe mode (removes the oval, clears the readout).
@@ -660,6 +666,7 @@ namespace DinoLino.Utilities.Modes
                 OnPropertyChanged(nameof(CurrentSplineAlgorithm));
                 OnPropertyChanged(nameof(IsCatmullRomSelected));
                 OnPropertyChanged(nameof(IsBezierSelected));
+                OnPropertyChanged(nameof(IsFreehandSelected));
                 OnTipChanged?.Invoke();
                 ResetDrawingState(); // switching algorithm mid-draw starts fresh
             }
@@ -675,6 +682,12 @@ namespace DinoLino.Utilities.Modes
         {
             get => _splineAlgorithm == SplineAlgorithm.Bezier;
             set { if (value) CurrentSplineAlgorithm = SplineAlgorithm.Bezier; }
+        }
+
+        public bool IsFreehandSelected
+        {
+            get => _splineAlgorithm == SplineAlgorithm.Freehand;
+            set { if (value) CurrentSplineAlgorithm = SplineAlgorithm.Freehand; }
         }
 
         private double _turningAngleArcRatioResult;
@@ -751,6 +764,7 @@ namespace DinoLino.Utilities.Modes
             _splineAlgorithm = SplineAlgorithm.CatmullRom;
             OnPropertyChanged(nameof(IsCatmullRomSelected));
             OnPropertyChanged(nameof(IsBezierSelected));
+            OnPropertyChanged(nameof(IsFreehandSelected));
 
             if (!alreadySplineWithFinished)
                 ResetDrawingState();
@@ -759,6 +773,7 @@ namespace DinoLino.Utilities.Modes
         // True when there's an in-progress spline ready to finalize with Enter.
         public bool CanFinalizeSpline =>
             CurrentMethod == CurvatureMethod.NPointSpline
+            && _splineAlgorithm != SplineAlgorithm.Freehand   // a stroke ends on release, not on Enter
             && !FindTurningAngleMode
             && _splinePoints.Count >= 3;
 
@@ -777,29 +792,40 @@ namespace DinoLino.Utilities.Modes
             List<Vector2> splinePointsDense = _splineAlgorithm == SplineAlgorithm.Bezier
                     ? SplineFitting.GetSchneiderBezierPoints(_splinePoints, 50)
                     : SplineFitting.GetCatmullRomPoints(_splinePoints, 50);
-            _lastSplineDense = splinePointsDense;   // keep for the Find-turning-angle tool
 
-            double imageLength = ToImageLength(GeometryCalculations.ArcLength(splinePointsDense));
+            return CommitSpline(_splinePoints, splinePointsDense,
+                _splineAlgorithm == SplineAlgorithm.Bezier
+                    ? "n-Point Bezier Spline"
+                    : "n-Point Catmull-Rom Spline");
+        }
+
+        /// Measures a finished spline and records it. Every route into the mode —
+        /// clicked points or a dragged stroke — ends here, so a freehand curve and a
+        /// clicked one are the same numbers arrived at the same way.
+        private List<UIElement> CommitSpline(
+            List<Vector2> controlPoints, List<Vector2> densePoints, string operationKind)
+        {
+            _lastSplineDense = densePoints;   // keep for the Find-turning-angle tool
+
+            double imageLength = ToImageLength(GeometryCalculations.ArcLength(densePoints));
             _imageSplineLength = imageLength;
             _hasImageSplineLength = true;
             RecomputeScaledResults();
 
             // Turn/Length carries a length in its denominator, so it is measured
             // against the image-pixel length like everything else that is stored.
-            double totalTurning = GeometryCalculations.SumTurningAnglesOpen(splinePointsDense);
+            double totalTurning = GeometryCalculations.SumTurningAnglesOpen(densePoints);
             TurningAngleArcRatioResult = Math.Round(
                 imageLength > 1e-5 ? totalTurning / imageLength : 0, 1);
 
-            SChordArcRatioResult = Math.Round(CalculateSChordArcRatio(splinePointsDense, _splinePoints), 1);
+            SChordArcRatioResult = Math.Round(CalculateSChordArcRatio(densePoints, controlPoints), 1);
 
             // Captured before the commit, which empties the accumulator.
             var output = new List<UIElement>(CurrentOperation);
 
             CommitCurrentOperation(new SplineOperation
             {
-                OperationKind = _splineAlgorithm == SplineAlgorithm.Bezier
-                    ? "n-Point Bezier Spline"
-                    : "n-Point Catmull-Rom Spline",
+                OperationKind = operationKind,
                 TurningAngleArcRatio = TurningAngleArcRatioResult,
                 SChordArcRatio = SChordArcRatioResult,
                 SplineLengthImagePixels = imageLength
@@ -809,6 +835,265 @@ namespace DinoLino.Utilities.Modes
             _splinePreview = null;
 
             return output;
+        }
+
+        // ---- Freehand spline ----
+        // A stroke dragged along the curve instead of clicked point by point. The raw
+        // stroke is not quite the curve: a hand shakes, and SumTurningAnglesOpen counts
+        // every tremor as a turn. So the stroke is resampled to even spacing, lightly
+        // smoothed, and reduced to control points, and a centripetal Catmull-Rom is run
+        // through those. How lightly is the user's call — see FreehandSmoothing. The
+        // default errs towards the drawn path, because a curve that has wandered off
+        // the contour is measuring the wrong thing however tidy its numbers look.
+
+        private readonly List<Vector2> _freehandStroke = new List<Vector2>();
+        private Polyline _freehandPreview = null;
+        private bool _freehandDrawing = false;
+
+        // Closer samples than this are the mouse reporting, not the hand moving.
+        private const double FreehandMinSpacing = 2.0;
+
+        // Drawing speed varies, so raw samples bunch up wherever the hand slowed.
+        // Even spacing first, in canvas pixels, so the smoothing below covers the same
+        // length of curve everywhere along it.
+        private const double FreehandResampleStep = 4.0;
+
+        // How much of what the hand did counts as signal, 0-10 from the panel. There is
+        // no correct answer to that in general: it depends on how much real detail the
+        // contour carries at the magnification being worked at, which is the user's
+        // judgement and not something this code can infer. Low keeps the drawn path,
+        // noise and all; high trades detail away for a calmer curve.
+        private double _freehandSmoothing = 2.0;
+        public double FreehandSmoothing
+        {
+            get => _freehandSmoothing;
+            set => SetField(ref _freehandSmoothing, Math.Max(0, Math.Min(10, value)));
+        }
+
+        // Gaussian width in resampled samples. This is the only step that moves a point
+        // off the traced path, so it is kept small: at the default it spans about 4 px
+        // of curve. Measured on contours carrying real detail, a wide one erases the
+        // detail outright — at sigma 4 a crenulated edge lost 10 px of position and
+        // 11% of its length.
+        private double FreehandSmoothSigma => _freehandSmoothing * 0.5;
+
+        // Douglas-Peucker tolerance, in canvas pixels. Never zero: some thinning is
+        // needed or every sample becomes a control point and the spline chases the
+        // noise between them. Unlike the Gaussian, this only ever DISCARDS points, so
+        // the ones it keeps still sit exactly where the user drew.
+        private double FreehandSimplifyEpsilon => 2.0 + _freehandSmoothing;
+
+        // Below this a drag was a stray click rather than a traced curve.
+        private const int FreehandMinStrokePoints = 8;
+
+        /// <summary>True when a left-drag should draw a freehand spline.</summary>
+        public bool FreehandSplineReady =>
+            CurrentMethod == CurvatureMethod.NPointSpline
+            && _splineAlgorithm == SplineAlgorithm.Freehand
+            && !FindTurningAngleMode;
+
+        /// <summary>True between the press and the release of a freehand stroke.</summary>
+        public bool IsFreehandStrokeActive => _freehandDrawing;
+
+        /// Starts a stroke and returns the live preview to put on the canvas. The
+        /// preview is mutated in place as the drag goes on, so it is added once.
+        public List<UIElement> BeginFreehandStroke(Vector2 mousePos)
+        {
+            var output = new List<UIElement>();
+            if (!FreehandSplineReady) return output;
+
+            // A new curve supersedes whatever the probe tool was pointing at.
+            _lastSplineDense = null;
+            _splinePoints.Clear();
+            CurrentOperation.Clear();
+            ClearElementsToRemove();
+
+            _freehandStroke.Clear();
+            _freehandStroke.Add(mousePos);
+            _freehandDrawing = true;
+            CurrentStep = 1;
+
+            _freehandPreview = new Polyline
+            {
+                Stroke = this.LineColor,
+                StrokeThickness = 2
+            };
+            _freehandPreview.Points.Add(new Point(mousePos.X, mousePos.Y));
+
+            CurrentOperation.Add(_freehandPreview);
+            output.Add(_freehandPreview);
+            return output;
+        }
+
+        /// <summary>Extends the stroke while the button is held.</summary>
+        public void ProcessFreehandDrag(Vector2 mousePos)
+        {
+            if (!_freehandDrawing || _freehandPreview == null) return;
+
+            Vector2 last = _freehandStroke[_freehandStroke.Count - 1];
+            Vector2 step = mousePos - last;
+            if (step.Magnitude() < FreehandMinSpacing) return;
+
+            _freehandStroke.Add(mousePos);
+            _freehandPreview.Points.Add(new Point(mousePos.X, mousePos.Y));
+        }
+
+        /// Ends the stroke, replaces it with the smoothed spline, and records the
+        /// measurements. Returns the elements to put on the canvas.
+        public List<UIElement> FinishFreehandStroke()
+        {
+            var output = new List<UIElement>();
+            if (!_freehandDrawing) return output;
+
+            _freehandDrawing = false;
+            CurrentStep = 0;
+
+            List<Vector2> control = StrokeToControlPoints(_freehandStroke);
+
+            // Too short, or too straight to have three points left: nothing to measure.
+            if (_freehandStroke.Count < FreehandMinStrokePoints || control.Count < 3)
+            {
+                CancelFreehandStroke();
+                return output;
+            }
+
+            // The traced stroke was only ever a preview. What gets measured is the
+            // smoothed curve, so that is what stays on screen.
+            if (_freehandPreview != null)
+            {
+                AddElementsToRemove(_freehandPreview);
+                CurrentOperation.Remove(_freehandPreview);
+                _freehandPreview = null;
+            }
+
+            var curve = MakeCatmullRomPath(control);
+            if (curve == null)
+            {
+                CancelFreehandStroke();
+                return output;
+            }
+
+            CurrentOperation.Add(curve);
+
+            _splinePoints.Clear();
+            _splinePoints.AddRange(control);
+            _freehandStroke.Clear();
+
+            return CommitSpline(control, SplineFitting.GetCatmullRomPoints(control, 50),
+                "Freehand Spline");
+        }
+
+        /// <summary>Abandons an in-progress stroke and takes its preview with it.</summary>
+        public void CancelFreehandStroke()
+        {
+            _freehandDrawing = false;
+
+            if (_freehandPreview != null)
+            {
+                AddElementsToRemove(_freehandPreview);
+                CurrentOperation.Remove(_freehandPreview);
+                _freehandPreview = null;
+            }
+
+            _freehandStroke.Clear();
+            _splinePoints.Clear();
+            CurrentStep = 0;
+        }
+
+        /// Reduces a traced stroke to the control points a user would have clicked:
+        /// even spacing, then smoothing to take out the tremor, then simplification.
+        private List<Vector2> StrokeToControlPoints(List<Vector2> stroke)
+        {
+            List<Vector2> even = ResampleByArcLength(stroke, FreehandResampleStep);
+            List<Vector2> smoothed = GaussianSmooth(even, FreehandSmoothSigma);
+
+            var asPoints = new List<Point>(smoothed.Count);
+            foreach (Vector2 v in smoothed)
+                asPoints.Add(new Point(v.X, v.Y));
+
+            List<Point> simplified = GeometryCalculations.DouglasPeucker(asPoints, FreehandSimplifyEpsilon);
+
+            var control = new List<Vector2>(simplified.Count);
+            foreach (Point p in simplified)
+                control.Add(new Vector2(p));
+
+            return control;
+        }
+
+        /// <summary>Walks the stroke and emits a point every 'step' pixels of it.</summary>
+        private static List<Vector2> ResampleByArcLength(List<Vector2> pts, double step)
+        {
+            var result = new List<Vector2>();
+            if (pts == null || pts.Count == 0 || step <= 0) return result;
+            if (pts.Count == 1) { result.Add(pts[0]); return result; }
+
+            var dist = new double[pts.Count];
+            for (int i = 1; i < pts.Count; i++)
+                dist[i] = dist[i - 1] + (pts[i] - pts[i - 1]).Magnitude();
+
+            double total = dist[pts.Count - 1];
+            if (total < step)
+            {
+                result.Add(pts[0]);
+                result.Add(pts[pts.Count - 1]);
+                return result;
+            }
+
+            int seg = 0;
+            for (double d = 0; d <= total; d += step)
+            {
+                while (seg < pts.Count - 2 && dist[seg + 1] < d) seg++;
+
+                double span = dist[seg + 1] - dist[seg];
+                double t = span > 1e-12 ? (d - dist[seg]) / span : 0;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+
+                result.Add(pts[seg] + (pts[seg + 1] - pts[seg]) * t);
+            }
+
+            Vector2 last = pts[pts.Count - 1];
+            if ((last - result[result.Count - 1]).Magnitude() > 1e-9)
+                result.Add(last);
+
+            return result;
+        }
+
+        /// Gaussian blur along the sequence of points. Ends are clamped rather than
+        /// wrapped or zeroed, so the curve keeps the endpoints the user drew.
+        private static List<Vector2> GaussianSmooth(List<Vector2> pts, double sigma)
+        {
+            var result = new List<Vector2>(pts.Count);
+            if (pts.Count < 3 || sigma <= 0)
+            {
+                result.AddRange(pts);
+                return result;
+            }
+
+            int radius = Math.Max(1, (int)Math.Ceiling(sigma * 3));
+            var weights = new double[radius * 2 + 1];
+            double norm = 0;
+            for (int k = -radius; k <= radius; k++)
+            {
+                double weight = Math.Exp(-(k * k) / (2.0 * sigma * sigma));
+                weights[k + radius] = weight;
+                norm += weight;
+            }
+
+            int n = pts.Count;
+            for (int i = 0; i < n; i++)
+            {
+                double x = 0, y = 0;
+                for (int k = -radius; k <= radius; k++)
+                {
+                    int j = Math.Min(n - 1, Math.Max(0, i + k));
+                    double weight = weights[k + radius];
+                    x += pts[j].X * weight;
+                    y += pts[j].Y * weight;
+                }
+                result.Add(new Vector2(x / norm, y / norm));
+            }
+
+            return result;
         }
 
         // ---- Find turning angle (probe the most recent spline) ----
@@ -1146,6 +1431,14 @@ namespace DinoLino.Utilities.Modes
             "💡 Chord/arc ratio approaches 1 for shallow arcs and decreases as the arc becomes more curved.",
             "💡 Turn/Length (Turning angle - spline length ratio) measures how sharply the curve bends, on average, along its length.");
 
+        private static readonly string[] FreehandTips = BuildTips(
+            "💡 Click and hold, then drag along the curve. The spline is finished the moment you release.",
+            "💡 Smoothing filters hand tremor out of the traced stroke. Raise it only as far as a steady curve needs: high settings pull the spline away from fine detail and shorten it.",
+            "💡 Set Smoothing to 0 to measure the path exactly as drawn. Every wobble then counts as curvature, so Turn/Length will read higher than the same shape clicked.",
+            "💡 Draw in one steady pass. Retracing or pausing mid-stroke adds detail the measurements will count.",
+            "💡 Chord/arc ratio approaches 1 for shallow arcs and decreases as the arc becomes more curved.",
+            "💡 Turn/Length (Turning angle - spline length ratio) measures how sharply the curve bends, on average, along its length.");
+
         private static readonly string[] NoMethodTips = BuildTips(
             "💡 Select a curvature method to begin.");
 
@@ -1153,7 +1446,11 @@ namespace DinoLino.Utilities.Modes
         {
             if (IsCircularArcSelected) return CircularArcTips;
             if (IsParabolicArcSelected) return ParabolicArcTips;
-            if (IsNPointSplineSelected) return IsCatmullRomSelected ? CatmullRomTips : BezierTips;
+            if (IsNPointSplineSelected)
+            {
+                if (IsFreehandSelected) return FreehandTips;
+                return IsCatmullRomSelected ? CatmullRomTips : BezierTips;
+            }
             return NoMethodTips;
         }
 

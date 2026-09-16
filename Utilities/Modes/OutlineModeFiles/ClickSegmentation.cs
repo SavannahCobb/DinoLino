@@ -427,9 +427,14 @@ namespace DinoLino.Utilities
 
             int seedIdx = sy * a.Width + sx;
 
+            // Why the last candidate scored zero, so the diagnostic line distinguishes
+            // "vetoed" from "measured and found wanting".
+            string veto = null;
+
             double Score(bool[] m)
             {
-                if (m == null) return 0;
+                veto = null;
+                if (m == null) { veto = "none"; return 0; }
 
                 // The answer to a click has to contain the click. Floods and watershed
                 // grow from the seed and cannot do otherwise, but the neural mask is
@@ -437,16 +442,18 @@ namespace DinoLino.Utilities
                 // not reading this image properly can return a confident, plausibly
                 // shaped region somewhere else entirely. Whatever that is, it is not
                 // what the user pointed at.
-                if (!m[clickIdx] && !m[seedIdx]) return 0;
+                if (!m[clickIdx] && !m[seedIdx]) { veto = "missed the click"; return 0; }
 
-                if (!_proc.HasMinimumPixels(m, minPlausibleArea)) return 0; // size veto
+                if (!_proc.HasMinimumPixels(m, minPlausibleArea)) { veto = "too small"; return 0; }
                 return ScoreMask(m, snap, a.Gradient, a.LocalGradientLevel);
             }
 
             bool Consider(string name, bool[] m)
             {
                 double s = Score(m);
-                diag.Append(name).Append('=').Append(s.ToString("F2")).Append(' ');
+                diag.Append(name).Append('=').Append(s.ToString("F2"));
+                if (veto != null) diag.Append('[').Append(veto).Append(']');
+                diag.Append(' ');
                 if (s > bestScore) { bestScore = s; best = m; bestName = name; }
                 return s >= AcceptableMaskScore;
             }
@@ -462,7 +469,9 @@ namespace DinoLino.Utilities
                     if (!ReferenceEquals(refined, chosen))
                     {
                         double rs = Score(refined);
-                        diag.Append("gmm=").Append(rs.ToString("F2")).Append(' ');
+                        diag.Append("gmm=").Append(rs.ToString("F2"));
+                        if (veto != null) diag.Append('[').Append(veto).Append(']');
+                        diag.Append(' ');
                         if (rs > Math.Max(bestScore, 0.0)) { chosen = refined; refinedWon = true; }
                     }
                 }

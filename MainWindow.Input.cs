@@ -136,6 +136,16 @@ namespace DinoLino
                     return;
                 }
 
+                // Abandon a freehand stroke that is still being drawn.
+                if (CurrentWorkMode is CurvatureMode strokeCm && strokeCm.IsFreehandStrokeActive)
+                {
+                    strokeCm.CancelFreehandStroke();
+                    Mouse.Capture(null);   // whichever element took it on the press
+                    RemovePendingElements();
+                    e.Handled = true;
+                    return;
+                }
+
                 // Cancel the active probe interaction without changing the underlying specimen data.
                 if (CurrentWorkMode is CurvatureMode probeCm && probeCm.FindTurningAngleMode)
                 {
@@ -411,6 +421,24 @@ namespace DinoLino
                 return;
             }
 
+            // Begin a freehand spline stroke in curvature mode. A drag, not a click,
+            // so it takes the button before the click router gets to it.
+            if (CurrentWorkMode is CurvatureMode freehandCm && freehandCm.FreehandSplineReady &&
+                e.ChangedButton == MouseButton.Left && e.ClickCount == 1)
+            {
+                if (!freehandCm.SeePreviousOperations && freehandCm.IsStartingNewOperation)
+                    ClearWorkspaceVisualsOnly();
+
+                RemovePendingElements();
+
+                foreach (UIElement element in freehandCm.BeginFreehandStroke(mousePos))
+                    AddElementToWorkSpace(element);
+
+                (sender as UIElement)?.CaptureMouse();  // Keep receiving movement while the stroke is active.
+                e.Handled = true;
+                return;
+            }
+
             // Skip clearing the workspace for probe interactions or other non-destructive actions.
             bool probing = CurrentWorkMode.IsProbeInteraction
                 || (CurrentWorkMode is CurvatureMode probeGuardCm && probeGuardCm.FindTurningAngleMode)
@@ -480,6 +508,11 @@ namespace DinoLino
                 RouteOutlineBrush(om, mousePos, e.LeftButton == MouseButtonState.Pressed);
             else
                 _outlineBrushActive = false;
+
+            // Extend an open freehand spline while the button is still down.
+            if (CurrentWorkMode is CurvatureMode dragCm && dragCm.IsFreehandStrokeActive
+                && e.LeftButton == MouseButtonState.Pressed)
+                dragCm.ProcessFreehandDrag(mousePos);
         }
 
         /// Applies whichever outline brush is armed. Erase, push, and local smooth
@@ -519,6 +552,23 @@ namespace DinoLino
                 return;
             }
 
+            // Releasing finishes a freehand spline: measured, committed, done.
+            if (e.ChangedButton == MouseButton.Left && CurrentWorkMode is CurvatureMode freehandCm
+                && freehandCm.IsFreehandStrokeActive)
+            {
+                // Finished before the capture is dropped, so the LostCapture handler
+                // finds nothing left to cancel.
+                var committed = freehandCm.FinishFreehandStroke();
+                (sender as UIElement)?.ReleaseMouseCapture();
+
+                RemovePendingElements();
+                foreach (UIElement element in committed)
+                    AddElementToWorkSpace(element);
+
+                e.Handled = true;
+                return;
+            }
+
             // Pause the freehand stroke; the stroke remains resumable until the mode ends it.
             if (e.ChangedButton == MouseButton.Left && CurrentWorkMode is OutlineMode om && om.HandDrawMode)
             {
@@ -532,6 +582,15 @@ namespace DinoLino
             _isPanning = false;
             _outlineBrushActive = false;
             Mouse.OverrideCursor = null;
+
+            // Capture lost with a stroke still open means the drag was interrupted
+            // rather than finished, so the half-drawn curve goes rather than being
+            // measured as though the user meant to stop there.
+            if (CurrentWorkMode is CurvatureMode cm && cm.IsFreehandStrokeActive)
+            {
+                cm.CancelFreehandStroke();
+                RemovePendingElements();
+            }
         }
 
         // ---- Workspace zoom ----
