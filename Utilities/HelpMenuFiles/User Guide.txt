@@ -9,7 +9,10 @@ Redo:
 Redoes the last action that was undone by the user. This returns the metadata of the next calculation and redraws the operation.
 
 Clear:	
-Clears all drawn operations and resets the metadata to its initial state.
+Clears all drawn operations and resets the metadata to its initial state for the current specimen. Also available as the Clear Specimen button.
+
+Clear All:
+Clears all specimens, measurements, and images from the session. A confirmation is shown first.
 
 Zoom:
 Use the scroll wheel to zoom in and out of the image at the location of the cursor.
@@ -21,6 +24,9 @@ Move cursor:
 Move the mouse, or hold Ctrl and press arrow keys to nudge the cursor one pixel at a time. Hold Shift and press arrow keys to move in larger steps.
 
 Press the spacebar to left click at the cursor's position.
+
+Averages:
+The Avg column beside each output is the mean of that measurement across all operations of the same kind for the current specimen.
 ------------------------------------------------------------------------------------------------
 KEYBOARD SHORTCUTS: 
 
@@ -31,6 +37,8 @@ Open image: 			Ctrl + F
 View history: 			Ctrl + H
 Export history: 		Ctrl + E
 Take screenshot: 		Ctrl + S
+Finish spline:			Enter
+Cancel:					Esc
 View next specimen:		Up arrow key
 View previous specimen: Down arrow key
 Zoom:					Scroll wheel (mouse) or pinch (trackpad)
@@ -51,29 +59,45 @@ Approximate a curve as the arc of a circle using three points.
 Click twice to draw a line from each end of the curve (your 'chord'), then click a third time in the midpoint of the curve to draw the chord bisector (your 'sagitta'). 
 Click again after arc completion to begin another operation.
 
-Central Angle: A measure of curvature. The central angle of a circular arc drawn using three points. 
-Chord-Arc Ratio: A measure of curvature. The length of the first line drawn (chord) divided by arc length.
+Central Angle: A measure of curvature. The angle, in degrees, subtended at the center of the circle passing through all three points.
+Chord-Arc Ratio: A measure of curvature. The length of the first line drawn (chord) divided by arc length. Arc length = radius * central angle (in radians).
 Rise-Span ratio: Length of the first line drawn (chord) divided by the length of its bisector (sagitta).
+Radius: Radius of the circle passing through all three points.
 
 ----- Parabolic Arc -----
 
 Approximate a curve as a parabola using three points.
-Click twice to draw a line from each end of the curve (your 'chord'), then click a third time in the midpoint of the curve to draw the chord bisector (your 'sagitta').
+Click twice to draw a line from each end of the curve (your 'chord'), then click a third time in the midpoint of the curve to draw the chord bisector (your 'sagitta'). 
 Click again after arc completion to begin another operation.
 
+The parabola y = ax^2 + bx + c is fitted through the three points with the chord scaled to unit length. Arc length is measured along 64 points sampled on the fitted parabola.
+
 Chord-Arc Ratio: A measure of curvature. The length of the first line drawn (chord) divided by arc length.
-Rise-Span Ratio: Length of the first line drawn (chord) divided by the length of its bisector (sagitta).
-Vertex Curvature: The slope (m) of the parabolic arc (y=mx^2...)
+Rise-Span Ratio: Length of the chord bisector (sagitta) divided by the length of the chord.
+Vertex Curvature: Curvature at the vertex of the fitted parabola, equal to 2*a, taken as an absolute value. Dimensionless, because the chord is scaled to unit length.
+Vertex Radius: Radius of curvature at the vertex, equal to chord length divided by vertex curvature.
 
 ----- n-Point Spline -----
 
-Click any amount of times along the curve, and finalize by pressing 'Enter'. This creates an n-point spline. Clicking again after spline completion begins another operation.
+Choose Catmull-Rom, Bezier, or Freehand, then draw along the curve. Beginning a new curve after one is finished starts another operation.
 
-Catmull-Rom splines: The spline must pass through every point. This operation uses centripetal Catmull-Rom splines, which are well-suited for non-uniform biological shapes. 
-Bezier splines: The spline is pulled towards the clicked points, but does not necessarily pass through them. This operation uses Schneider's Bezier fitting to convert n points into one or more smooth cubic Bezier segments. 
+Catmull-Rom splines: The spline must pass through every point. This operation uses centripetal Catmull-Rom splines, which are well-suited for non-uniform biological shapes. Click any number of times along the curve, then press 'Enter' to finish.
+Bezier splines: The spline is pulled towards the clicked points, but does not necessarily pass through them. This operation uses Schneider's Bezier fitting, with a tolerance of 2 pixels, to convert n points into one or more smooth cubic Bezier segments. Click any number of times along the curve, then press 'Enter' to finish.
+Freehand: Click, hold the left mouse button, and drag along the curve. The spline is finished when the mouse button is released.
 
-Turn.Angles/Length: A measure of curvature. The sum of the turning angles (change in angle of the tangent lines along the spline) divided by the length of the spline. Approximates the average change in angle of the tangent lines along the spline.
-Chord-Arc Ratio: A measure of curvature. The length of the straight line (chord) connecting the start and end points of the curve divided by the length of the spline.
+Splines are measured along 50 sampled points per segment.
+
+Turn.Angles/Length: A measure of curvature. The sum of the turning angles (absolute change in angle of the tangent lines along the spline, in degrees) divided by the length of the spline. Approximates the average change in angle of the tangent lines along the spline.
+Tortuosity: The length of the spline divided by the length of the straight line (chord) connecting its start and end points. Equal to 1 for a straight line.
+Length: Length of the spline.
+
+Freehand Smoothing:
+Slider from 0 to 10, default 2. Filters hand tremor from the drawn stroke. Higher values give a smoother curve but pull it away from fine detail.
+The stroke is resampled to points spaced 4 pixels apart, smoothed with a Gaussian filter of width 0.5 * Smoothing (in samples), and simplified with the Ramer-Douglas-Peucker algorithm at a tolerance of 2 + Smoothing pixels. A centripetal Catmull-Rom spline is fitted through the remaining points. At 0, no smoothing is applied.
+
+----- Find Turning Angle / Length -----
+
+Measures Turn.Angles/Length over a section of the most recently drawn spline instead of the whole curve. Move the cursor along the spline to choose the section. Section width sets the number of samples on each side of the cursor. Press Esc to exit.
 ------------------------------------------------------------------------------------------------
 TRIANGLE MODE:
 
@@ -85,6 +109,7 @@ Angle A:		The angle at vertex A.
 Angle B:		The angle at vertex B.
 Angle C:		The angle at vertex C.
 Aspect Ratio:	Length of the longest side of the triangle divided by its height.
+Area:			Area of the triangle.
 Relative Size:	Area of the current triangle divided by the area of the previous triangle.
 
 Note: Triangle height is the perpendicular distance from its longest side to the opposite vertex.
@@ -94,26 +119,33 @@ DRAW MODE:
 Draw basic shapes and lines on the image and return their relative proportions.
 
 ----- Draw Shapes -----
-Click once to begin drawing a geometric shape, drag to determine size and shape, and click a second time to finish.
+Choose a rectangle, square, ellipse, or circle. Click once to begin drawing a geometric shape, drag to determine size and shape, and click a second time to finish.
 
-Aspect Ratio: Width of the drawn shape divided by its height. NA for lines and angles.
-Relative Size: Area of the drawn shape divided by the area of the previous shape. NA for lines and angles.
+Area: Area of the drawn shape.
+Aspect Ratio: Width of the drawn shape divided by its height. Rectangles and ellipses only.
+Relative Size: Area of the drawn shape divided by the area of the previous shape of the same kind.
 
 ----- Draw Lines -----
 Click twice anywhere on the image to draw a straight line between two points.
-For angles, type the desired angle in the text box. Click twice anywhere on the image draw line AB. Line BC will be constrained to the specified angle. Click a third time to finish.
 
-Line Ratio: Length of the drawn line divided by the length of the previous line. NA for shapes.
+Free: The line is unconstrained.
+Parallel: The line is constrained parallel to the first constrained line drawn.
+Perpendicular: The line is constrained perpendicular to the first constrained line drawn.
+Angle: Type the desired angle in the text box. The line is constrained to that angle from the first constrained line drawn.
+
+Length: Distance between the two points.
+X Distance: Extent of the line along the specimen's X-axis (see Tools, Align Image). Uses the image's X-axis if no alignment is set.
+Y Distance: Extent of the line along the specimen's Y-axis. X and Y Distance are always positive, and together with Length form a right triangle.
+Line Ratio: Length of the drawn line divided by the length of the previous line.
+Angle: Clockwise angle from the previous line to the drawn line, from 0 to 360 degrees. Constrained lines are measured from the first constrained line.
 
 ------------------------------------------------------------------------------------------------
 OUTLINE MODE:
 
 Click objects to generate an enclosed outline around them.
 
------ Draw -----
-Default: 
-Faster than Watershed, but may perform poorly for complex images (e.g., multi-toned, patterned, non-uniform background).
-Well-suited for geometrically simple objects on a solid background.
+----- Automated Outline -----
+Click an object to outline it. Several segmentation methods are tried and the best-scoring outline that contains the clicked point is kept. If an AI segmentation model is installed, it is tried first. All processing is done on the local computer.
 
 Fill Sensitivity:
 For objects on a solid background, set fill sensitivity to the maximum value. 
@@ -127,9 +159,13 @@ Click inside the region bounded by a dashed line to finalize the outline.
 Watershed:
 Higher computational expense leads to slower execution, but it tends to yield a more accurate outline.
 Better-suited for complex images (e.g., multi-toned objects, patterned objects, and/or objects on a non-uniform background).
+Boundary Sensitivity sets the amount of blur applied before watershed: Off, Low, or High.
 
 Tip: If the outline is not accurate, try adjusting the fill sensitivity, or switch between default and watershed methods.
 Tip: To reduce computational expense and increase performance speed, try cropping or decimating the image.
+
+----- Draw by Hand -----
+Click, hold the left mouse button, and drag to draw an outline. The outline closes automatically when the stroke crosses itself.
 
 ----- Erase -----
 Click, hold the left mouse button, and drag anywhere on the outline to erase that part. Set the eraser size using the slider.
@@ -137,24 +173,30 @@ Alternately, hold the 'Alt' button and drag the cursor to erase part of the outl
 
 ----- Push -----
 Click, hold the left mouse button, and drag anywhere on the outline to push that part outward. Set the brush size using the slider.
-Alternately, hold the 'Alt' button and drag the cursor to erase part of the outline. This may be more convenient when using a trackpad.
+Alternately, hold the 'Alt' button and drag the cursor to push part of the outline. This may be more convenient when using a trackpad.
 
 ----- Smooth -----
 Smooth a noisy outline to the desired amount by adjusting the slider value. The higher the number of passes, the more smoothing will occur.
 Global smooth smooths the entire outline, while local smooth smooths only the area around the cursor.
 For local smooth, set the brush size using the slider and the desired strength. Click, hold the left mouse button, and drag anywhere on the outline to smooth that part. 
-Alternately, hold the 'Alt' button and drag the cursor to erase part of the outline. This may be more convenient when using a trackpad.
+Alternately, hold the 'Alt' button and drag the cursor to smooth part of the outline. This may be more convenient when using a trackpad.
 
 ----- Generate Metadata -----
-Max Length: Maximum distance between two points along the long axis of the outline. This is not restricted to uninterrupted distance.
-Max Width: Maximum distance between two points in a perpendicular orientation to the long axis of the outline. This is not restricted to uninterrupted distance.
-Aspect Ratio (bbox): Length over width of an axis-aligned bounding box that is drawn around the outline. The bounding box is always a square that is aligned with the canvas boundaries.
-Perimeter / Area: Length of the outline divided by its area.
+Before measuring, the outline is resampled to evenly spaced points. Without a scale, 512 points are used. With a scale, points are spaced by the Spacing value (default 0.05 units). The number of points is limited to between 64 and 4096.
+
+Max Length: Maximum distance between any two points on the outline.
+Max Width: Maximum extent of the outline perpendicular to Max Length.
+Aspect Ratio (bbox): Width divided by height of the bounding box around the outline. The bounding box is aligned with the image edges.
+Area: Area enclosed by the outline.
+Perimeter: Length of the outline.
 Circularity: 4π*Area / Perimeter^2
 Solidity: Area of the outlined shape / Convex hull area
-Turn.Angles/Length: A measure of curvature. The sum of the turning angles (change in angle of the tangent lines along the outline) divided by the outline perimeter length. Approximates the average change in angle of the tangent lines along the outline.
+Convexity: Convex hull perimeter / Perimeter
+Turn.Angles/Length: A measure of curvature. The sum of the turning angles (absolute change in angle of the tangent lines along the outline, in degrees) divided by the outline perimeter length. Approximates the average change in angle of the tangent lines along the outline.
 
-Elliptic Fourier Analysis: Click to open a pop-up window to perform Elliptic Fourier Analysis (EFA) on the outline.
+Elliptic Fourier Analysis: Click to open a pop-up window to perform Elliptic Fourier Analysis (EFA) on the outline. The default number of harmonics is the smallest number that captures 99% of the cumulative harmonic power, and may be changed. Coefficients are normalized on the first harmonic. A warning is shown if the first harmonic is too small or too circular for a reliable normalization.
+
+Commit Outline to History: Saves the outline and its metadata as an operation.
 
 ------------------------------------------------------------------------------------------------
 FILE:
@@ -179,6 +221,12 @@ Take a screenshot of the current software image screen. The screenshot may be sa
 ----- Export Operation History -----
 Export the history of all operations performed. Undone or cleared operations will not be included. The exported file will be a workbook in .xlsx format, with each operation's history on a separate sheet.
 
+----- Save Settings -----
+Keep the current View menu settings for the next session.
+
+----- Restore Default Settings -----
+Return the View menu settings to their defaults.
+
 ------------------------------------------------------------------------------------------------
 EDIT:
 
@@ -193,13 +241,18 @@ TOOLS:
 
 ----- Set Scale -----
 Click on two points in the image to draw a line. Enter the real-world length of the line in the input box and click "OK" to set the scale. 
-This will allow the software to convert pixel measurements to real-world units.
+This will allow the software to convert pixel measurements to real-world units. Available units are km, hm, dam, m, dm, cm, mm, micrometers, and nm.
+Each specimen keeps its own scale. Measurements are shown as Unscaled until a scale is set.
+
+----- Align Image -----
+Set the specimen's X or Y axis by clicking two points on the image. The other axis is set perpendicular to it. Used for X Distance and Y Distance in Draw Mode.
+Rotating or flipping the image removes the alignment.
 
 ----- Picture Corrections ----- 
-Adjust brightness, contrast, or saturation of the uploaded image. Zero is the default value for all parameters.
+Adjust brightness, contrast, or saturation of the uploaded image, from -100 to 100. Zero is the default value for all parameters. Each specimen keeps its own settings.
 
 ----- Decimate -----
-Decimate the image by a specified factor to reduce its resolution and computational expense. This may be helpful for large images or when using the watershed method in outline mode.
+Decimate the image by a specified factor to reduce its resolution and computational expense. This may be helpful for large images or when using the watershed method in outline mode. Enter a target pixel count or percentage.
 
 ----- Flip -----
 Flip image horizontally or vertically to produce a mirror image.
@@ -233,6 +286,9 @@ Toggle on to display an on-screen window which contains the number of circular a
 Opening a new specimen resets count to zero for all operations. Undo and Redo also affect operation count.
 The Operation Count window may be dragged anywhere in the workspace.
 
+----- See Image Axes -----
+Toggle on or off to display the specimen's X and Y axes in the corner of the workspace.
+
 ----- See Navigation Window -----
 Toggle on or off to display a navigation window in the top left corner of the screen. 
 The navigation window shows a zoomed-out view of the image, with a rectangle indicating the current viewable area. 
@@ -247,13 +303,23 @@ The coefficients table may be exported in wide format in Batch Workshop, or it m
 2D Outlines:
 All outlines created in a session may be exported as black silhouettes on a white background. Outlines are automatically filled prior to export.
 All generated outlines will be exported unless they are manually removed in the Edit window.
-Select a destination folder for export, a file type, and desired canvas size.
+Select a destination folder for export, a file type (.png, .tif, .bmp, .jpg, or .svg), and desired canvas size.
 Scale: Outline area will be resized such that the filled shape covers 25% of the canvas. 
 	   Some elongated shapes are exceptions to this. If an elongated shape at target area reaches past the margins, it is shrunk until it fits within the canvas.
 Align: Outlines may be rotated onto the long axis to align orientations, or exported in original orientation.
 
 ----- See Directory -----
 Navigate file paths, view, and edit the specimens uploaded for a given a session.
+
+Files:
+Browse folders and open images or 3D models.
+
+Sample:
+View, rename, load, duplicate, or delete specimens in the session.
+
+Plot:
+Plot recorded measurements as a scatter plot, boxplot, dot plot, histogram, or QQ plot, and export the plot as an image.
+Principal Component Analysis (PCA): Add two or more variables, then run the analysis. Variables are centered on their means. If standardization is selected, each variable is also divided by its standard deviation (correlation-matrix PCA).
 
 ----- See Rex -----
 A friend to help you work.
@@ -279,11 +345,13 @@ In Curvature Mode:
 "circ_centangle" = Central Angle of Circular Arc
 "circ_chordarc" = Chord-Arc Ratio of Circular Arc
 "circ_risespan" = Rise-Span Ratio of Circular Arc
+"circ_radius" = Radius of Circular Arc
 "para_chordarc" = Chord-Arc Ratio of Parabolic Arc
 "para_risespan" = Rise-Span Ratio of Parabolic Arc
 "para_vertcurv" = Vertex Curvature of Parabolic Arc
+"para_radius" = Vertex Radius of Parabolic Arc
 "spline_turnangle" = Turning Angle / Spline Length Ratio of n-Point Spline
-"spline_tortuosity" = Chord length divided by total length of n-Point Spline
+"spline_tortuosity" = Total length divided by chord length of n-Point Spline
 "spline_length" = Length of n-Point Spline
 
 In Triangle Mode:
@@ -301,15 +369,25 @@ In Draw Mode:
 "ellipse_area" = Area of Ellipse
 "circ_area" = Area of Circle
 "line_length" = Line Length
+"line_xdist" = X Distance of Line
+"line_ydist" = Y Distance of Line
 "line_ratio" = Ratio of line length relative to previous line length
 "line_angle" = Angle of line relative to previous line
 
 In Outline Mode:
+"outline_maxlength" = Maximum Length of Outline
+"outline_maxwidth" = Maximum Width of Outline
 "outline_aspect" = Outline Aspect Ratio
 "outline_perim" = Outline Perimeter Length
-"outline_area" = "Area of Filled Outline
-"outline_perimarea" = Ratio of Outline Perimeter Length over Outline Filled Area
+"outline_area" = Area of Filled Outline
 "outline_circ" = Outline Circularity
 "outline_solidity" = Outline Solidity
+"outline_convexity" = Outline Convexity
+"outline_sumturn" = Sum of Turning Angles along Outline
 "outline_turnlength" = Ratio of Sum of Turning Angles / Outline Perimeter Length
+"outline_spacing" = Spacing between resampled outline points
+"outline_points" = Number of resampled outline points used for measurement
+"outline_vertices" = Number of points in the drawn outline
+"outline_hasmeta" = Whether metadata was generated for the outline
+"efa_harmonics" = Number of Elliptic Fourier Analysis harmonics
 ------------------------------------------------------------------------------------------------
