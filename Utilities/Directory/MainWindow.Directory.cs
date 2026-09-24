@@ -1238,8 +1238,11 @@ namespace DinoLino
     /// </summary>
     internal class AddToGroupWindow : Window
     {
+        private const string Note = "This will create a new column in all data tables.";
+
         private readonly ComboBox _columnBox;
         private readonly TextBox _groupBox;
+        private readonly TextBlock _note;
         private readonly Button _okButton;
 
         /// <summary>The column name entered, trimmed and capped.</summary>
@@ -1291,13 +1294,14 @@ namespace DinoLino
             _groupBox.TextChanged += (s, e) => UpdateOkEnabled();
             panel.Children.Add(_groupBox);
 
-            panel.Children.Add(new TextBlock
+            _note = new TextBlock
             {
-                Text = "This will create a new column in all data tables.",
+                Text = Note,
                 Foreground = Brushes.Gray,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 14)
-            });
+            };
+            panel.Children.Add(_note);
 
             _okButton = new Button
             {
@@ -1340,8 +1344,23 @@ namespace DinoLino
             Content = panel;
         }
 
-        // OK requires both names to be non-blank after trimming.
-        private void UpdateOkEnabled() =>
-            _okButton.IsEnabled = ColumnName.Length > 0 && GroupName.Length > 0;
+        // OK requires both names to be non-blank after trimming, and the column name
+        // to be one no formula column has already taken: two columns of the same name
+        // would be indistinguishable in the tables and their exports.
+        private void UpdateOkEnabled()
+        {
+            string column = ColumnName;
+
+            bool taken = column.Length > 0
+                && WorkshopFormulas.All.Any(
+                    c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase));
+
+            _note.Text = taken
+                ? "\"" + column + "\" is already a formula column. Choose another name."
+                : Note;
+
+            _note.Foreground = taken ? Brushes.Firebrick : Brushes.Gray;
+            _okButton.IsEnabled = !taken && column.Length > 0 && GroupName.Length > 0;
+        }
     }
 }

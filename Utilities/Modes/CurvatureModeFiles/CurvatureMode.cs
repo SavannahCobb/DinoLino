@@ -1433,7 +1433,7 @@ namespace DinoLino.Utilities.Modes
 
         private static readonly string[] FreehandTips = BuildTips(
             "💡 Click and hold, then drag along the curve. The spline is finished the moment you release.",
-            "💡 Smoothing filters hand tremor out of the traced stroke. Raise it only as far as a steady curve needs: high settings pull the spline away from fine detail and shorten it.",
+            "💡 Smoothing to a low value filters hand tremor out of the traced stroke. High smoothing settings pull the spline away from fine detail and shorten it.",
             "💡 Set Smoothing to 0 to measure the path exactly as drawn. Every wobble then counts as curvature, so Turn/Length will read higher than the same shape clicked.",
             "💡 Draw in one steady pass. Retracing or pausing mid-stroke adds detail the measurements will count.",
             "💡 Chord/arc ratio approaches 1 for shallow arcs and decreases as the arc becomes more curved.",

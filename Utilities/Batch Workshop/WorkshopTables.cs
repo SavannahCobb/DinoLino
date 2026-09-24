@@ -323,10 +323,12 @@ namespace DinoLino.Utilities
         }
 
         /// Builds a table from any subset of column groups, so a caller can take one
-        /// operation kind out of a category and table it on its own.
+        /// operation kind out of a category and table it on its own. The formula key
+        /// names the table whose formula columns belong here, for a caller that shows
+        /// part of a category under no filter key of its own.
         public static WorkshopTable BuildFromGroups(
             string key, IReadOnlyList<WorkshopColumnGroup> groups,
-            UndoRedoManager undoRedo, string currentName)
+            UndoRedoManager undoRedo, string currentName, string formulaKey = null)
         {
             var headers = new List<string>();
 
@@ -347,8 +349,20 @@ namespace DinoLino.Utilities
                 MeasurementHeaders = headers.ToArray()
             };
 
-            if (undoRedo == null) return table;
+            if (undoRedo != null) AddBlocks(table, groups, offsets, undoRedo, currentName);
 
+            // The user's own columns for this table, calculated from the measurement
+            // columns and carried into every export, plot and analysis built from it.
+            WorkshopFormulaEvaluator.Apply(table, formulaKey ?? key);
+
+            return table;
+        }
+
+        // One block of rows per specimen: the archived records, then the live one.
+        private static void AddBlocks(
+            WorkshopTable table, IReadOnlyList<WorkshopColumnGroup> groups, int[] offsets,
+            UndoRedoManager undoRedo, string currentName)
+        {
             foreach (var block in EnumerateBlocks(undoRedo, currentName))
             {
                 // Each group's operations for this specimen, in the order they were made.
@@ -403,8 +417,6 @@ namespace DinoLino.Utilities
 
                 table.Blocks.Add(block);
             }
-
-            return table;
         }
 
         // A malformed operation should blank one cell rather than break the table.
@@ -600,7 +612,6 @@ namespace DinoLino.Utilities
                                 Col("outline_convexity", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).Convexity)),
                                 Col("outline_solidity", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).Solidity)),
                                 Col("outline_sumturn", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).SumTurningAngles)),
-                                Col("outline_turnlength", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).TurningAngleLength)),
                                 Col("outline_turnlength", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).TurningAngleLength)),
                                 Col("outline_spacing", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MeasurementSpacingImagePixels, scale)),
                                 Col("outline_points", o => ((OutlineOperation)o).MeasurementPointCount.ToString())

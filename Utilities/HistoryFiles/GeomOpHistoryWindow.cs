@@ -27,6 +27,12 @@ namespace DinoLino.Utilities
         // window and the Batch Workshop's All Geometric Data export can reuse it.
         private static readonly HashSet<string> _selectedSheets = new();
 
+        private readonly TabControl _tabs = new TabControl();
+
+        // The custom tab's grids, replaced on their own when a variable is ticked so
+        // the list of variables keeps its place.
+        private ContentControl _customData;
+
         private TextBlock _workbookStatus;
         private Button _exportWorkbookButton;
 
@@ -145,15 +151,27 @@ namespace DinoLino.Utilities
             var footer = BuildWorkbookFooter();
             UpdateWorkbookStatus();
 
-            var tabs = new TabControl();
-            foreach (var spec in Tabs)
-                tabs.Items.Add(BuildTab(spec));
+            BuildTabs();
 
             var root = new DockPanel();
             DockPanel.SetDock(footer, Dock.Bottom);
             root.Children.Add(footer);
-            root.Children.Add(tabs);
+            root.Children.Add(_tabs);
             Content = root;
+        }
+
+        // Draws the tab strip, keeping the user on the tab they were reading.
+        private void BuildTabs()
+        {
+            int selected = _tabs.SelectedIndex;
+
+            _tabs.Items.Clear();
+            foreach (var spec in Tabs)
+                _tabs.Items.Add(BuildTab(spec));
+
+            _tabs.Items.Add(BuildCustomTab());
+
+            if (selected >= 0 && selected < _tabs.Items.Count) _tabs.SelectedIndex = selected;
         }
 
         // Every specimen, oldest first: archived records then the live one.
@@ -170,7 +188,9 @@ namespace DinoLino.Utilities
         #region Tab building
 
         // One tab's table. The null filter key means the History view shows every
-        // column, whatever has been hidden in a Batch Workshop edit window.
+        // column, whatever has been hidden in a Batch Workshop edit window. The
+        // category is named separately so the tab also carries that table's formula
+        // columns, as far as the operation kinds on the tab can supply them.
         private static WorkshopTable BuildTable(
             TabSpec spec, UndoRedoManager ur, string currentName, ScaleCalibration scale)
         {
@@ -178,7 +198,8 @@ namespace DinoLino.Utilities
                 .Where(spec.Pick)
                 .ToList();
 
-            return WorkshopTables.BuildFromGroups(null, groups, ur, currentName);
+            return WorkshopTables.BuildFromGroups(
+                null, groups, ur, currentName, WorkshopTables.KeyFor(spec.Category));
         }
 
         // For each specimen, a header and a grid of that kind's operations. The grid
@@ -187,6 +208,15 @@ namespace DinoLino.Utilities
         private TabItem BuildTab(TabSpec spec)
         {
             var table = BuildTable(spec, _undoRedo, _currentName, _scale);
+            var panel = BuildTableGrids(table);
+
+            var (csvHeaders, csvRows) = table.ToCsv();
+            return WrapTab(spec, table, panel, csvHeaders, csvRows);
+        }
+
+        // One grid per specimen, with the group columns before the measurements.
+        private static StackPanel BuildTableGrids(WorkshopTable table)
+        {
             var groupColumns = SpecimenGroups.Columns;
 
             var panel = new StackPanel();
@@ -222,18 +252,17 @@ namespace DinoLino.Utilities
                 panel.Children.Add(grid);
             }
 
-            var (csvHeaders, csvRows) = table.ToCsv();
-            return WrapTab(spec.Name, panel, csvHeaders, csvRows, spec.FileName);
+            return panel;
         }
 
         #endregion
 
         #region Tab chrome and grid helpers
 
-        // Wraps a tab's specimen panel in a scroll viewer + button row (Add to
-        // workbook / Export to CSV).
-        private TabItem WrapTab(string header, StackPanel panel,
-            string[] csvHeaders, List<string[]> csvRows, string suggestedFileName)
+        // Wraps a tab's specimen panel in a scroll viewer + button row (Add column /
+        // Add to workbook / Export to CSV).
+        private TabItem WrapTab(TabSpec spec, WorkshopTable table, StackPanel panel,
+            string[] csvHeaders, List<string[]> csvRows)
         {
             var scroll = new ScrollViewer
             {
@@ -242,6 +271,27 @@ namespace DinoLino.Utilities
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
             };
 
+            var formulaButton = new Button
+            {
+                Content = "Add column",
+                Margin = new Thickness(0, 0, 8, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Make a new variable from a formula over this tab's columns. "
+                         + "It joins the Batch Workshop table this tab belongs to, where it can be edited."
+            };
+            formulaButton.Click += (s, e) => AddFormulaColumn(spec, table);
+
+            return WrapContent(
+                spec.Name, spec.FileName, scroll, () => (csvHeaders, csvRows), formulaButton);
+        }
+
+        // The chrome every tab shares: its content over a row of buttons. The rows to
+        // export are asked for at the moment of the click, so a tab that rebuilds its
+        // own content still writes what is on screen.
+        private TabItem WrapContent(
+            string header, string suggestedFileName, UIElement content,
+            Func<(string[] Headers, List<string[]> Rows)> csv, Button extraButton)
+        {
             var addButton = new Button
             {
                 Content = WorkbookButtonLabel(IsInWorkbook(header)),
@@ -264,7 +314,11 @@ namespace DinoLino.Utilities
                 Content = "Export to CSV…",
                 Padding = new Thickness(12, 4, 12, 4)
             };
-            csvButton.Click += (s, e) => ExportCsv(csvHeaders, csvRows, suggestedFileName);
+            csvButton.Click += (s, e) =>
+            {
+                var rows = csv();
+                ExportCsv(rows.Headers, rows.Rows, suggestedFileName);
+            };
 
             var buttonRow = new StackPanel
             {
@@ -272,14 +326,273 @@ namespace DinoLino.Utilities
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(8)
             };
+
+            if (extraButton != null) buttonRow.Children.Add(extraButton);
             buttonRow.Children.Add(addButton);
             buttonRow.Children.Add(csvButton);
 
             var dock = new DockPanel { Margin = new Thickness(4) };
             DockPanel.SetDock(buttonRow, Dock.Bottom);
             dock.Children.Add(buttonRow);
-            dock.Children.Add(scroll);
+            dock.Children.Add(content);
             return new TabItem { Header = header, Content = dock };
+        }
+
+        // A column added from a tab belongs to the Batch Workshop table the tab is
+        // part of, so it appears here, in that table, and in everything built from
+        // either of them.
+        private void AddFormulaColumn(TabSpec spec, WorkshopTable table)
+        {
+            // The formula reads the columns on this tab, but the column it makes joins
+            // the whole table behind it, so a name used anywhere there is not free.
+            var whole = WorkshopTables.Build(spec.Category, _undoRedo, _currentName, _scale);
+
+            var window = new WorkshopFormulaWindow(table, null, whole.MeasurementHeaders)
+            {
+                Owner = this,
+                FontSize = FontSize,
+                FontFamily = FontFamily
+            };
+
+            if (window.ShowDialog() != true) return;
+
+            WorkshopFormulas.Save(
+                null, WorkshopTables.KeyFor(spec.Category), window.ColumnName, window.Result);
+
+            BuildTabs();
+        }
+
+        // ---- Custom tab ----
+
+        /// The Custom tab: variables ticked from any mode, side by side in one table.
+        private TabItem BuildCustomTab()
+        {
+            _customData = new ContentControl { Content = BuildCustomGrids() };
+
+            var body = new DockPanel();
+
+            var picker = BuildVariablePicker();
+            DockPanel.SetDock(picker, Dock.Left);
+            body.Children.Add(picker);
+
+            body.Children.Add(new ScrollViewer
+            {
+                Content = _customData,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+            });
+
+            var addColumn = new Button
+            {
+                Content = "Add column",
+                Margin = new Thickness(0, 0, 8, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Make a new variable from a formula over the columns of this table"
+            };
+            addColumn.Click += (s, e) => EditCustomFormulaColumn(null);
+
+            return WrapContent(CustomTable.Key, CustomTable.FileName, body, CustomCsv, addColumn);
+        }
+
+        private (string[] Headers, List<string[]> Rows) CustomCsv() =>
+            CustomTable.Build(_undoRedo, _currentName, _scale).ToCsv();
+
+        private UIElement BuildCustomGrids()
+        {
+            var table = CustomTable.Build(_undoRedo, _currentName, _scale);
+
+            if (table.MeasurementHeaders.Length == 0 || table.Blocks.Count == 0)
+            {
+                return new TextBlock
+                {
+                    Text = "Tick variables on the left to build a table.",
+                    Opacity = 0.6,
+                    Margin = new Thickness(12)
+                };
+            }
+
+            return BuildTableGrids(table);
+        }
+
+        // Ticking a variable redraws the grids alone, so the list of variables keeps
+        // its scroll position.
+        private void RefreshCustomData()
+        {
+            if (_customData != null) _customData.Content = BuildCustomGrids();
+        }
+
+        // Every variable of every mode, ticked into or out of the custom table, with
+        // that table's own formula columns underneath.
+        private FrameworkElement BuildVariablePicker()
+        {
+            var panel = new StackPanel { Margin = new Thickness(4, 4, 8, 4) };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Variables",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(4, 4, 4, 2)
+            });
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Tick what the table should hold. Attempt 1 of each kind shares a row, "
+                       + "attempt 2 the next, and so on.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(4, 0, 4, 4)
+            });
+
+            var clear = new Button
+            {
+                Content = "Clear all",
+                Padding = new Thickness(8, 2, 8, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(4, 0, 4, 6)
+            };
+            clear.Click += (s, e) =>
+            {
+                CustomTableSelection.Clear();
+                BuildTabs();
+            };
+            panel.Children.Add(clear);
+
+            var catalog = CustomTable.Catalog(_undoRedo, _currentName, _scale);
+
+            if (catalog.Count == 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "No measurements have been recorded yet.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.6,
+                    Margin = new Thickness(4)
+                });
+            }
+
+            foreach (var group in catalog)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = group.Title,
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(4, 8, 4, 2)
+                });
+
+                foreach (var header in group.Headers)
+                {
+                    var category = group.Category;
+                    string name = header;
+
+                    var tick = new CheckBox
+                    {
+                        Content = name,
+                        IsChecked = CustomTableSelection.IsSelected(category, name),
+                        Margin = new Thickness(8, 1, 4, 1)
+                    };
+                    tick.Click += (s, e) =>
+                    {
+                        CustomTableSelection.Toggle(category, name);
+                        RefreshCustomData();
+                    };
+
+                    panel.Children.Add(tick);
+                }
+            }
+
+            var formulas = WorkshopFormulas.ColumnsFor(CustomTable.Key);
+
+            if (formulas.Count > 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "Formula columns",
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(4, 10, 4, 2)
+                });
+
+                foreach (var formula in formulas)
+                {
+                    var column = formula;
+
+                    var line = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Margin = new Thickness(8, 1, 4, 1)
+                    };
+
+                    line.Children.Add(new TextBlock
+                    {
+                        Text = column.Name,
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+
+                    var edit = new Button
+                    {
+                        Content = "\u270E",
+                        Width = 18,
+                        Height = 18,
+                        Padding = new Thickness(0),
+                        Margin = new Thickness(6, 0, 0, 0),
+                        FontSize = 9,
+                        ToolTip = "Edit or delete this formula column:  = " + column.Text
+                    };
+                    edit.Click += (s, e) => EditCustomFormulaColumn(column);
+
+                    line.Children.Add(edit);
+                    panel.Children.Add(line);
+                }
+            }
+
+            return new Border
+            {
+                BorderBrush = Brushes.LightGray,
+                BorderThickness = new Thickness(0, 0, 1, 0),
+                Child = new ScrollViewer
+                {
+                    Content = panel,
+                    Width = 210,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+                }
+            };
+        }
+
+        // The custom table belongs to this window, so its formula columns are written
+        // and edited here rather than in a Batch Workshop edit window.
+        private void EditCustomFormulaColumn(WorkshopFormulaColumn existing)
+        {
+            var table = CustomTable.Build(_undoRedo, _currentName, _scale);
+
+            // A variable that is unticked today can be ticked tomorrow, so no column
+            // may take the name of one.
+            var reserved = CustomTable
+                .Catalog(_undoRedo, _currentName, _scale)
+                .SelectMany(g => g.Headers);
+
+            var window = new WorkshopFormulaWindow(table, existing, reserved)
+            {
+                Owner = this,
+                FontSize = FontSize,
+                FontFamily = FontFamily
+            };
+
+            if (window.ShowDialog() != true) return;
+
+            if (window.DeleteRequested)
+            {
+                WorkshopFormulas.Remove(existing);
+                BuildTabs();
+                return;
+            }
+
+            WorkshopFormulas.Save(
+                existing,
+                CustomTable.Key,
+                WorkshopFormulaWindow.KeptName(this, existing, window.ColumnName),
+                window.Result);
+
+            BuildTabs();
         }
 
         private static bool IsInWorkbook(string sheetName) => _selectedSheets.Contains(sheetName);
@@ -559,6 +872,12 @@ namespace DinoLino.Utilities
             {
                 var (headers, rows) = BuildTable(spec, ur, currentName, scale).ToCsv();
                 sheets.Add(new WorkbookSheet { Name = spec.Name, Headers = headers, Rows = rows });
+            }
+
+            if (CustomTableSelection.HasColumns || _selectedSheets.Contains(CustomTable.Key))
+            {
+                var (headers, rows) = CustomTable.Build(ur, currentName, scale).ToCsv();
+                sheets.Add(new WorkbookSheet { Name = CustomTable.Key, Headers = headers, Rows = rows });
             }
 
             return sheets;

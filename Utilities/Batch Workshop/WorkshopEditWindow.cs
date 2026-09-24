@@ -1,5 +1,7 @@
 ﻿using DinoLino.Utilities.Operations;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -53,7 +55,9 @@ namespace DinoLino.Utilities
             {
                 Text = "Deleting a row or specimen is permanent and cannot be undone with " +
                        "Ctrl+Z. Hiding a column only removes it from the table and its export. " +
-                       "Group columns are set from the Sample tab and cannot be hidden here.",
+                       "Group columns are set from the Sample tab and cannot be hidden here. " +
+                       "Add column makes a variable of your own from a formula; it is recalculated " +
+                       "every time the table is built, and the ✎ on its header edits it.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = Brushes.Gray,
                 Margin = new Thickness(0, 0, 0, 10)
@@ -67,6 +71,16 @@ namespace DinoLino.Utilities
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 10, 0, 0)
             };
+
+            var addColumn = new Button
+            {
+                Content = "Add column",
+                Padding = new Thickness(12, 4, 12, 4),
+                Margin = new Thickness(0, 0, 8, 0),
+                ToolTip = "Make a new variable from a formula over this table's columns"
+            };
+            addColumn.Click += (s, e) => EditFormulaColumn(null);
+            footer.Children.Add(addColumn);
 
             var restore = new Button
             {
@@ -125,10 +139,110 @@ namespace DinoLino.Utilities
                     Opacity = 0.6,
                     Margin = new Thickness(0, 10, 0, 0)
                 });
+            }
+            else
+            {
+                _body.Children.Add(BuildGrid(table));
+            }
+
+            var missing = MissingFormulaColumns(table);
+            if (missing.Count > 0) _body.Children.Add(MissingPanel(missing));
+        }
+
+        // ---- Formula columns ----
+
+        // This table's formula columns, ready to look up by header.
+        private Dictionary<string, WorkshopFormulaColumn> FormulaColumns()
+        {
+            var columns = new Dictionary<string, WorkshopFormulaColumn>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var column in WorkshopFormulas.ColumnsFor(WorkshopTables.KeyFor(_category)))
+                columns[column.Name] = column;
+
+            return columns;
+        }
+
+        // Formula columns this table cannot calculate, because a column their formula
+        // names is not one of its own. They are listed under the table so they can
+        // still be corrected or removed.
+        private List<WorkshopFormulaColumn> MissingFormulaColumns(WorkshopTable table)
+        {
+            var shown = new HashSet<string>(table.MeasurementHeaders, StringComparer.OrdinalIgnoreCase);
+
+            return WorkshopFormulas
+                .ColumnsFor(WorkshopTables.KeyFor(_category))
+                .Where(c => !shown.Contains(c.Name))
+                .ToList();
+        }
+
+        private UIElement MissingPanel(List<WorkshopFormulaColumn> columns)
+        {
+            var panel = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Not calculated in this table, because a column the formula names is missing:",
+                Foreground = Brushes.Gray,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            foreach (var column in columns)
+            {
+                var line = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+
+                line.Children.Add(new TextBlock
+                {
+                    Text = column.Name + "  =  " + column.Text,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                var fix = SmallButton("\u270E", "Edit or delete this formula column");
+                var captured = column;
+                fix.Click += (s, e) => EditFormulaColumn(captured);
+                line.Children.Add(fix);
+
+                panel.Children.Add(line);
+            }
+
+            return panel;
+        }
+
+        /// Opens the formula dialog for a new column, or for one the table already has.
+        private void EditFormulaColumn(WorkshopFormulaColumn existing)
+        {
+            string key = WorkshopTables.KeyFor(_category);
+
+            // The dialog offers this table's columns and previews the rows the formula
+            // would produce, so it is given the table as it currently stands.
+            var table = WorkshopTables.Build(_category, _undoRedo, _currentName, _scale);
+
+            var window = new WorkshopFormulaWindow(table, existing)
+            {
+                Owner = this,
+                FontSize = FontSize,
+                FontFamily = FontFamily
+            };
+
+            if (window.ShowDialog() != true) return;
+
+            if (window.DeleteRequested)
+            {
+                WorkshopFormulas.Remove(existing);
+                Rebuild();
                 return;
             }
 
-            _body.Children.Add(BuildGrid(table));
+            WorkshopFormulas.Save(
+                existing,
+                key,
+                WorkshopFormulaWindow.KeptName(this, existing, window.ColumnName),
+                window.Result);
+
+            Rebuild();
         }
 
         // ---- Grid rendering ----
@@ -136,6 +250,7 @@ namespace DinoLino.Utilities
         private UIElement BuildGrid(WorkshopTable table)
         {
             var visible = table.VisibleColumnIndexes();
+            var formulaColumns = FormulaColumns();
             var groupColumns = SpecimenGroups.Columns;
             int groupCount = groupColumns.Count;
 
@@ -156,13 +271,13 @@ namespace DinoLino.Utilities
             // ---- Header row ----
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            Add(grid, HeaderCell("Specimen", null), row, 0);
-            Add(grid, HeaderCell("Attempt", null), row, 1);
+            Add(grid, HeaderCell("Specimen"), row, 0);
+            Add(grid, HeaderCell("Attempt"), row, 1);
 
             // A group column belongs to the specimen rather than to this table, so it
             // carries no hide button.
             for (int g = 0; g < groupCount; g++)
-                Add(grid, HeaderCell(groupColumns[g], null), row, 2 + g);
+                Add(grid, HeaderCell(groupColumns[g]), row, 2 + g);
 
             for (int i = 0; i < visible.Count; i++)
             {
@@ -180,10 +295,22 @@ namespace DinoLino.Utilities
                     };
                 }
 
-                Add(grid, HeaderCell(header, hide), row, firstMeasurement + i);
+                // A column the user made carries the formula behind it, which this
+                // button opens for editing or deletion.
+                Button edit = null;
+                WorkshopFormulaColumn formula;
+
+                if (formulaColumns.TryGetValue(header, out formula))
+                {
+                    var captured = formula;
+                    edit = SmallButton("\u270E", "Edit this formula column:  = " + formula.Text);
+                    edit.Click += (s, e) => EditFormulaColumn(captured);
+                }
+
+                Add(grid, HeaderCell(header, hide, edit), row, firstMeasurement + i);
             }
 
-            Add(grid, HeaderCell("", null), row, columnCount - 1);
+            Add(grid, HeaderCell(""), row, columnCount - 1);
             row++;
 
             // ---- Specimen blocks ----
@@ -346,7 +473,7 @@ namespace DinoLino.Utilities
             Padding = new Thickness(6, 3, 6, 3)
         };
 
-        private static Border HeaderCell(string text, Button hideButton)
+        private static Border HeaderCell(string text, params Button[] buttons)
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal };
             panel.Children.Add(new TextBlock
@@ -356,8 +483,13 @@ namespace DinoLino.Utilities
                 VerticalAlignment = VerticalAlignment.Center
             });
 
-            if (hideButton != null)
-                panel.Children.Add(hideButton);
+            if (buttons != null)
+            {
+                foreach (var button in buttons)
+                {
+                    if (button != null) panel.Children.Add(button);
+                }
+            }
 
             return Cell(panel, HeaderFill);
         }

@@ -185,7 +185,7 @@
                         Margin="10,0,0,6">
                 <TextBlock Text="Smoothing:" FontWeight="Bold" Margin="0,4,0,0"/>
                 <TextBlock TextWrapping="Wrap" Foreground="Gray"
-                           Text="How much hand tremor to filter out of the traced stroke. Raise it only as far as a steady curve needs — higher settings pull the spline away from fine detail and shorten it."
+                           Text="How much to smooth the traced stroke. Low values remove hand tremor."
                            Margin="0,0,0,2"/>
                 <Slider Minimum="0" Maximum="10" Value="{Binding FreehandSmoothing}"
                         TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,2,0,2"/>

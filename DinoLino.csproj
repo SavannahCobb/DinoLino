@@ -65,7 +65,11 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="MainWindow.Navigation.cs" />
+    <Compile Include="Utilities\Batch Workshop\CustomTable.cs" />
+    <Compile Include="Utilities\Batch Workshop\FormulaEngine.cs" />
     <Compile Include="Utilities\Batch Workshop\MainWindow.Workshop.cs" />
+    <Compile Include="Utilities\Batch Workshop\WorkshopFormulas.cs" />
+    <Compile Include="Utilities\Batch Workshop\WorkshopFormulaWindow.cs" />
     <Compile Include="Utilities\Batch Workshop\WorkshopTables.cs" />
     <Compile Include="Utilities\Directory\MainWindow.Plot.cs" />
     <Compile Include="Utilities\Directory\MainWindow.Directory.cs" />

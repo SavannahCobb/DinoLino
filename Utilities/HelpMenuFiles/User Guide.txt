@@ -1,5 +1,13 @@
 USER GUIDE
 ------------------------------------------------------------------------------------------------
+ABOUT DINOLINO:
+
+DinoLino is a Windows program for 2D geometric morphometrics. It measures shape from photographs of specimens: curvature, angles, distances, and outlines.
+
+Each image opened is treated as a specimen that keeps its own scale, alignment, picture corrections, and measurements. Operations are drawn in Curvature Mode, Triangle Mode, Draw Mode, or Outline Mode, and the operation history can be exported as an .xlsx workbook for statistical analysis.
+
+The version number and list of contributors are in the About window of the Help menu.
+------------------------------------------------------------------------------------------------
 GLOBAL METHODS:
 
 Undo:	
@@ -297,6 +305,26 @@ While zoomed in, click anywhere in the navigation window to move the viewable ar
 ----- See Batch Workshop -----
 Edit and export data tables as CSV files for each mode. Toggle on or off to display on the right sidebar.
 
+Formula Columns:
+Click Edit beside Curvature Data, Angle Data, Shape Data, Outline Metadata or EFA Data, then Add column, to make a new variable calculated from that table's columns. Enter a name of up to 14 characters and a formula, such as = outline_area / outline_perim^2. Column names may be typed straight into the formula, or found in the list beside it and inserted.
+Each tab of the History window carries the same button. A column added from a tab belongs to the table that tab is part of, and is edited or deleted from that table's Edit window.
+A column name in a formula stands for that column's value on the same row. Formulas use addition, subtraction, multiplication, division and powers, with brackets to group them. Comparisons are written = <> < <= > >= and give 1 or 0, as in IF(outline_area > 100, 1, 0).
+Row functions: SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT, MEDIAN, ABS, SQRT, LN, LOG, LOG10, EXP, POWER, MOD, ROUND, INT, SIGN, PI, SIN, COS, TAN, ASIN, ACOS, ATAN, ATAN2, DEGREES, RADIANS, IF, IFBLANK, ISBLANK.
+Whole-column functions, taken over every specimen: COLSUM, COLMEAN, COLMIN, COLMAX, COLCOUNT, COLMEDIAN, COLSD.
+Specimen functions, taken over the row's own specimen: SPECSUM, SPECMEAN, SPECMIN, SPECMAX, SPECCOUNT, SPECMEDIAN, SPECSD.
+Each of these takes one column name, as in SPECMEAN(outline_area). COLSD and SPECSD are sample standard deviations, which need at least two values.
+A blank cell is not zero. Any arithmetic using a blank cell gives a blank result, so a row without that measurement is left empty rather than counted as zero. SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT and MEDIAN skip blank arguments, and IFBLANK(value, 0) puts a number in their place. A calculation with no numerical answer, such as division by zero, shows #ERR.
+Cells carry their units, such as 4.56 cm, and a formula reads the number in front of the unit. Results are plain numbers rounded to 4 decimal places, so a formula that mixes scaled and unscaled specimens mixes their units as well.
+A row holds attempt n of every operation kind in its table, so a formula combining two kinds combines their nth attempts.
+Formula columns are recalculated whenever a table is built, and appear in the table, in its CSV and workbook exports, in the History window, and among the variables offered in the Plot tab and Principal Component Analysis. A formula may use any formula column made before it. The pencil button on a column header edits or deletes the column, and the X button hides it as for any other column.
+Formula columns last for the session and are removed by Clear All.
+
+Custom Table:
+The History window has a Custom tab that builds one table from variables of any mode. Tick the variables on the left; each one is added as a column in the order it is ticked, and Clear all empties the choice.
+Rows follow the same rule as a single mode's table: attempt 1 of every kind shares a row, attempt 2 the next, and a kind with fewer attempts leaves blank cells. Specimen and group columns are included as in every other table.
+Add column writes a formula column for this table, so measurements of different modes can be combined, for example = outline_area / tri_area. These columns are edited from the Formula columns list on the left.
+Export to CSV writes the table as custom_data.csv, and Add to workbook includes it in the exported workbook as a sheet named Custom. The choice of variables lasts for the session and is removed by Clear All.
+
 EFA Data:
 The coefficients table may be exported in wide format in Batch Workshop, or it may be exported in the Elliptic Fourier Analysis window.
 
@@ -390,4 +418,6 @@ In Outline Mode:
 "outline_vertices" = Number of points in the drawn outline
 "outline_hasmeta" = Whether metadata was generated for the outline
 "efa_harmonics" = Number of Elliptic Fourier Analysis harmonics
+
+Columns added with Add column appear under the name given to them, after the measurement columns.
 ------------------------------------------------------------------------------------------------

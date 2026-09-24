@@ -589,9 +589,12 @@ namespace DinoLino
             SpecimenManager.ResetSession();
 
             // Session-scoped table state: group columns belong to specimens that are
-            // gone, hidden columns to tables that are now empty, and the staged
-            // workbook sheets to a history that no longer exists.
+            // gone, formula columns to measurements that no longer exist, hidden
+            // columns to tables that are now empty, and the staged workbook sheets to
+            // a history that no longer exists.
             SpecimenGroups.Clear();
+            WorkshopFormulas.Clear();
+            CustomTableSelection.Clear();
             WorkshopColumnFilter.RestoreAll();
             GeomOpHistoryWindow.ClearStagedSheets();
 
