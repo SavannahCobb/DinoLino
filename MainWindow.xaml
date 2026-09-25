@@ -26,12 +26,23 @@
         -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File" MouseLeave="Menu_MouseLeave">
-                <MenuItem Header="_Open Image" Click="Menu_OpenImage" InputGestureText="Ctrl+F"/>
-                <MenuItem Header="Open 3D _Model" Click="Menu_Open3DModel"/>
+                <MenuItem Header="_New Project" Click="Menu_NewProject" InputGestureText="Ctrl+N"
+                          ToolTip="Put this session aside and start an empty one."/>
+                <MenuItem Header="Open _Project" Click="Menu_OpenProject" InputGestureText="Ctrl+O"
+                          ToolTip="Open a saved project: its specimens, measurements and tables."/>
+                <MenuItem Header="Sa_ve Project" Click="Menu_SaveProject" InputGestureText="Ctrl+Shift+S"
+                          ToolTip="Save every specimen, measurement and table to a project file."/>
+                <MenuItem Header="Save Project _As..." Click="Menu_SaveProjectAs"
+                          ToolTip="Save this session to a project file of another name."/>
+                <Separator/>
+                <MenuItem Header="_Open Image">
+                    <MenuItem Header="_2D Image" Click="Menu_OpenImage" InputGestureText="Ctrl+F"
+                              ToolTip="Open a photograph as a specimen."/>
+                    <MenuItem Header="_3D Model" Click="Menu_Open3DModel" InputGestureText="Ctrl+3"
+                              ToolTip="Open a mesh and position it, then capture the view as a specimen."/>
+                </MenuItem>
                 <MenuItem Header="_Import Folder" Click="Menu_ImportFolder"
                           ToolTip="Import every image and 3D model in a folder as specimens."/>
-                <MenuItem Header="_Take Screenshot" x:Name="UI_MenuScreenshot" IsEnabled="False"
-                          Click="Menu_Screenshot" InputGestureText="Ctrl+S"/>
                 <MenuItem Header="_Export Operation History" Click="Menu_ExportHistory" InputGestureText="Ctrl+E"/>
                 <MenuItem Header="Save _Settings" x:Name="UI_MenuSaveSettings"
                           IsCheckable="True" IsChecked="False" Click="Menu_SaveSettings"
@@ -65,10 +76,14 @@
                 <MenuItem Header="Reposition 3D _Object" x:Name="UI_MenuReposition3D"
                           Click="Menu_Reposition3DModel" IsEnabled="False"
                           ToolTip="Re-open the 3D model to rotate it and capture a new view. Available only for 3D objects."/>
-                <MenuItem Header="_Clear Image Cache" Click="Menu_ClearImageCache"
-                          ToolTip="Remove all cached specimen images from the cache. Names and measurements are kept."/>
-                <MenuItem Header="Edit _Image Cache" Click="Menu_EditImageCache"
-                          ToolTip="Review cached specimen images and remove them one at a time."/>
+                <MenuItem Header="_Take Screenshot" x:Name="UI_MenuScreenshot" IsEnabled="False"
+                          Click="Menu_Screenshot" InputGestureText="Ctrl+S"/>
+                <MenuItem Header="Image _Cache">
+                    <MenuItem Header="_Clear" Click="Menu_ClearImageCache"
+                              ToolTip="Remove all cached specimen images from the cache. Names and measurements are kept."/>
+                    <MenuItem Header="_Edit" Click="Menu_EditImageCache"
+                              ToolTip="Review cached specimen images and remove them one at a time."/>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_View" MouseLeave="Menu_MouseLeave">
                 <MenuItem Header="_See Tips" x:Name="UI_SeeTips" IsCheckable="True" IsChecked="True" Click="Menu_SeeTips"/>
@@ -87,16 +102,8 @@
                 <MenuItem Header="See _Rex" x:Name="UI_SeeRex" IsCheckable="True" IsChecked="True" Click="Menu_SeeRex"
                           ToolTip="Show the creature artwork in the control panel."/>
                 <MenuItem Header="See _History" Click="Menu_SeeHistory"  InputGestureText="Ctrl+H"/>
-                <MenuItem Header="_Line Color" x:Name="UI_LineColor" MouseLeave="Menu_MouseLeave">
-                    <RadioButton Content="_Red" Tag="Red" GroupName="LineColors" IsChecked="True" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_Blue" Tag="Blue" GroupName="LineColors" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_Orange" Tag="Orange" GroupName="LineColors" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_Green" Tag="Green" GroupName="LineColors" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_Black" Tag="Black" GroupName="LineColors" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_Grey" Tag="Gray" GroupName="LineColors" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_White" Tag="White" GroupName="LineColors" Click="Menu_Color_Click"/>
-                    <RadioButton Content="_Brown" Tag="Brown" GroupName="LineColors" Click="Menu_Color_Click"/>
-                </MenuItem>
+                <MenuItem Header="_Line Options" Click="Menu_LineOptions"
+                          ToolTip="Choose the color and thickness every mode draws at."/>
                 <MenuItem Header="_Font" Click="Menu_Font"/>
             </MenuItem>
             <MenuItem Header="_Help" MouseLeave="Menu_MouseLeave">
@@ -272,7 +279,7 @@
                 </Grid.ColumnDefinitions>
 
                 <Grid x:Name="UI_WorkSpace" Grid.Row="0" Grid.Column="0" ClipToBounds="True">
-                    <Grid MouseMove="WorkSpace_MouseMove" MouseDown="WorkSpace_Click" MouseUp="WorkSpace_MouseUp" MouseWheel="WorkSpace_ScrollZoom">
+                    <Grid MouseMove="WorkSpace_MouseMove" MouseLeave="WorkSpace_MouseLeave" MouseDown="WorkSpace_Click" MouseUp="WorkSpace_MouseUp" MouseWheel="WorkSpace_ScrollZoom">
                         <Border x:Name ="UI_WorkBorder" BorderBrush="White" BorderThickness="3" Panel.ZIndex="10" Width="{Binding ActualWidth, ElementName=UI_WorkImage, Mode=OneWay}" Height="{Binding ActualHeight, ElementName=UI_WorkImage, Mode=OneWay}">
                             <Canvas x:Name="UI_WorkCanvas" Focusable="True"/>
                         </Border>
@@ -793,6 +800,7 @@
                                 <Border BorderBrush="#AAAAAA" BorderThickness="1" Background="White">
                                     <TreeView x:Name="UI_DirectoryTree" BorderThickness="0"
                                           Loaded="DirectoryTree_Loaded"
+                                          SelectedItemChanged="DirectoryTree_SelectionChanged"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto"/>
                                 </Border>

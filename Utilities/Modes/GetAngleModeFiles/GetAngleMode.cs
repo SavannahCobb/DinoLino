@@ -201,7 +201,7 @@ namespace DinoLino.Utilities.Modes
                         TriAspectRatio = TriAspectRatioResult,
                         TriAreaImagePixels = _imageArea,
                         RelativeArea = RelativeAreaResult
-                    });
+                    }, PointA, PointB, PointC);
 
                     CurrentUILine = null;
                     CurrentStep++;

@@ -80,6 +80,11 @@
     </Compile>
     <Compile Include="Utilities\Image Calibration\ImageAlignment.cs" />
     <Compile Include="Utilities\MainWindow.Import.cs" />
+    <Compile Include="Utilities\Project\AutoSave.cs" />
+    <Compile Include="Utilities\Project\OperationRedraw.cs" />
+    <Compile Include="Utilities\Project\ProjectFile.cs" />
+    <Compile Include="Utilities\Project\ProjectSession.cs" />
+    <Compile Include="Utilities\Project\MainWindow.Project.cs" />
     <Compile Include="Utilities\MainWindow.Settings.cs" />
     <Compile Include="Utilities\Modes\CurvatureModeFiles\CurvatureControlPanel.xaml.cs">
       <DependentUpon>CurvatureControlPanel.xaml</DependentUpon>
@@ -91,6 +96,7 @@
     <Compile Include="Utilities\Modes\DrawModeFiles\DrawControlPanel.xaml.cs">
       <DependentUpon>DrawControlPanel.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Utilities\ImageAdjustments\LineOptionsWindow.cs" />
     <Compile Include="Utilities\ImageAdjustments\FontWindow.xaml.cs">
       <DependentUpon>FontWindow.xaml</DependentUpon>
     </Compile>

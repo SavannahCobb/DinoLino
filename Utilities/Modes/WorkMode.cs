@@ -42,6 +42,14 @@ namespace DinoLino.Utilities.Modes
         /// <summary>Shared axis alignment supplied by the main window.</summary>
         public ImageAlignment Alignment { get; set; }
 
+        /// Mapping between image pixels and the canvas the modes draw on, kept current
+        /// by the workspace as the image is laid out. A point clicked at one window
+        /// size converts through this to the same image pixel it would at any other.
+        /// It starts unset — scale zero — so a conversion attempted before the
+        /// workspace has supplied one falls back rather than passing canvas pixels off
+        /// as image pixels.
+        public ViewTransform ImageTransform { get; set; }
+
         /// <summary>Controls whether previously drawn operations remain visible.</summary>
         public bool SeePreviousOperations { get; set; } = false;
 
@@ -104,7 +112,16 @@ namespace DinoLino.Utilities.Modes
 
         #region Workspace elements
 
+        /// <summary>Thinnest and thickest line the Line Options window offers.</summary>
+        public const double MinLineThickness = 0.5;
+
+        public const double MaxLineThickness = 10.0;
+
+        /// <summary>Thickness a window that has never been told otherwise draws at.</summary>
+        public const double DefaultLineThickness = 2.0;
+
         private Brush _lineColor = Brushes.OrangeRed;
+        private double _lineThickness = DefaultLineThickness;
 
         /// <summary>Current drawing color for newly created elements.</summary>
         public Brush LineColor
@@ -118,6 +135,32 @@ namespace DinoLino.Utilities.Modes
                     OnPropertyChanged();
                 }
             }
+        }
+
+        /// Current stroke width for newly created elements, in canvas pixels. The
+        /// guide marks a tool draws in its own fixed weight, since they say where a
+        /// measurement will go rather than being part of one.
+        public double LineThickness
+        {
+            get => _lineThickness;
+            set
+            {
+                double clipped = ClipThickness(value);
+
+                if (_lineThickness != clipped)
+                {
+                    _lineThickness = clipped;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>Holds a thickness inside the range the window offers.</summary>
+        public static double ClipThickness(double thickness)
+        {
+            if (double.IsNaN(thickness)) return DefaultLineThickness;
+
+            return Math.Max(MinLineThickness, Math.Min(MaxLineThickness, thickness));
         }
 
         /// <summary>Elements drawn by the operation in progress.</summary>
@@ -138,10 +181,10 @@ namespace DinoLino.Utilities.Modes
             _elementsToRemove.Clear();
         }
 
-        protected Line MakeLine(Vector2 a, Vector2 b, double thickness = 2) => new()
+        protected Line MakeLine(Vector2 a, Vector2 b) => new()
         {
             Stroke = LineColor,
-            StrokeThickness = thickness,
+            StrokeThickness = LineThickness,
             X1 = a.X,
             Y1 = a.Y,
             X2 = b.X,
@@ -190,6 +233,13 @@ namespace DinoLino.Utilities.Modes
             UndoRedoManager?.Commit(operation);
         }
 
+        /// Commits an operation together with the canvas-space points that define it.
+        protected void CommitOperation(WorkOperation operation, IEnumerable<Point> canvasPoints)
+        {
+            RecordGeometry(operation, canvasPoints);
+            CommitOperation(operation);
+        }
+
         /// Stamps the operation with this mode and the accumulated elements, commits
         /// it, and empties the accumulator ready for the next operation.
         protected void CommitCurrentOperation(WorkOperation operation)
@@ -200,6 +250,61 @@ namespace DinoLino.Utilities.Modes
             operation.Elements = new List<UIElement>(CurrentOperation);
             CommitOperation(operation);
             CurrentOperation.Clear();
+        }
+
+        /// The same, for an operation defined by a handful of clicked points.
+        protected void CommitCurrentOperation(WorkOperation operation, params Vector2[] canvasPoints)
+        {
+            RecordGeometry(operation, canvasPoints);
+            CommitCurrentOperation(operation);
+        }
+
+        /// The same, for an operation defined by a drawn run of points.
+        protected void CommitCurrentOperation(WorkOperation operation, IEnumerable<Vector2> canvasPoints)
+        {
+            RecordGeometry(operation, canvasPoints);
+            CommitCurrentOperation(operation);
+        }
+
+        /// Stores the points that define an operation, converted into image pixels.
+        /// Called again when an operation's geometry changes after it was committed.
+        protected void RecordGeometry(WorkOperation operation, IEnumerable<Point> canvasPoints)
+        {
+            if (operation == null || canvasPoints == null) return;
+
+            var points = new List<Point>();
+            foreach (var point in canvasPoints) points.Add(ToImagePoint(point.X, point.Y));
+
+            operation.ImagePoints = points;
+        }
+
+        /// <summary>Stores defining points held as the modes' own vectors.</summary>
+        protected void RecordGeometry(WorkOperation operation, IEnumerable<Vector2> canvasPoints)
+        {
+            if (operation == null) return;
+
+            var points = ToImagePoints(canvasPoints);
+            if (points == null) return;
+
+            operation.ImagePoints = points;
+        }
+
+        /// Converts a run of canvas-space vectors into image pixels. A run with a
+        /// missing point describes nothing, so it yields null rather than a shorter
+        /// list that would read as a complete record of something else.
+        protected List<Point> ToImagePoints(IEnumerable<Vector2> canvasPoints)
+        {
+            if (canvasPoints == null) return null;
+
+            var points = new List<Point>();
+
+            foreach (var point in canvasPoints)
+            {
+                if (point == null) return null;
+                points.Add(ToImagePoint(point.X, point.Y));
+            }
+
+            return points;
         }
 
         private bool _canUndo;
@@ -264,6 +369,14 @@ namespace DinoLino.Utilities.Modes
         /// <summary>Converts a canvas-space area into square image pixels.</summary>
         protected double ToImageArea(double canvasArea) =>
             Scale?.CanvasToImageArea(canvasArea) ?? canvasArea;
+
+        /// Converts a canvas-space position into image pixels. The transform carries
+        /// the image's own offset within the canvas; before the workspace has supplied
+        /// one, the scale alone is the best available answer.
+        protected Point ToImagePoint(double canvasX, double canvasY) =>
+            ImageTransform.IsValid
+                ? ImageTransform.CanvasToImage(new Point(canvasX, canvasY))
+                : new Point(ToImageLength(canvasX), ToImageLength(canvasY));
 
         #endregion
 

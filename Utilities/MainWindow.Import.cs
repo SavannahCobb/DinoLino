@@ -148,7 +148,7 @@ namespace DinoLino
                     {
                         // A 3D model has no picture until the user positions it, so it
                         // is registered now and loaded when they open it.
-                        imported.Add(SpecimenManager.ImportSpecimen(null, name, file));
+                        imported.Add(SpecimenManager.ImportSpecimen(null, name, file));   // 3D model: no picture yet
                         models++;
                         continue;
                     }
@@ -160,7 +160,7 @@ namespace DinoLino
                         continue;
                     }
 
-                    imported.Add(SpecimenManager.ImportSpecimen(bitmap, name, null));
+                    imported.Add(SpecimenManager.ImportSpecimen(bitmap, name, null, FullPath(file)));
                 }
             }
             finally

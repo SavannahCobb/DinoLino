@@ -49,10 +49,15 @@ namespace DinoLino.Utilities
         /// picks a color, which leaves every work mode on its own default.
         public string LineColor { get; set; }
 
-        /// The color View ▸ Line Color ticks on a window that has never been told
-        /// otherwise. Named here so a reset has something to name, since a null
+        /// The color View ▸ Line Options opens on for a window that has never been
+        /// told otherwise. Named here so a reset has something to name, since a null
         /// LineColor asks for the modes to be left alone rather than reddened.
         public const string DefaultLineColor = "Red";
+
+        /// Stroke width every work mode draws at, in canvas pixels. The range is the
+        /// one the Line Options window offers; a file naming anything outside it has
+        /// been hand-edited or damaged, so the default is used in its place.
+        public double LineThickness { get; set; } = Modes.WorkMode.DefaultLineThickness;
 
         public string FontFamily { get; set; } = "Arial";
         public double FontSize { get; set; } = 14;
@@ -109,6 +114,7 @@ namespace DinoLino.Utilities
             settings.SeeRex = ReadBool(values, "SeeRex", settings.SeeRex);
 
             settings.LineColor = ReadString(values, "LineColor", settings.LineColor);
+            settings.LineThickness = ReadLineThickness(values, settings.LineThickness);
             settings.FontFamily = ReadString(values, "FontFamily", settings.FontFamily);
             settings.FontSize = ReadFontSize(values, settings.FontSize);
 
@@ -159,6 +165,20 @@ namespace DinoLino.Utilities
             if (size < MinFontSize || size > MaxFontSize) return fallback;
 
             return size;
+        }
+
+        private static double ReadLineThickness(Dictionary<string, string> values, double fallback)
+        {
+            if (!values.TryGetValue("LineThickness", out string text)) return fallback;
+
+            if (!double.TryParse(
+                    text, NumberStyles.Float, CultureInfo.InvariantCulture, out double thickness))
+                return fallback;
+
+            if (thickness < Modes.WorkMode.MinLineThickness
+                || thickness > Modes.WorkMode.MaxLineThickness) return fallback;
+
+            return thickness;
         }
 
         #endregion
@@ -213,6 +233,7 @@ namespace DinoLino.Utilities
             Write(text, "SeeRex", SeeRex);
 
             Write(text, "LineColor", LineColor);
+            Write(text, "LineThickness", LineThickness);
             Write(text, "FontFamily", FontFamily);
             Write(text, "FontSize", FontSize);
 

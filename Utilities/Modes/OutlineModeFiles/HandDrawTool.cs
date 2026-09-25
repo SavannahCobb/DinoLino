@@ -117,7 +117,8 @@ namespace DinoLino.Utilities.Modes
                 return;
             }
 
-            var line = OutlineVisuals.CreateOutlinePolyline(_context.LineColor, dashed: true);
+            var line = OutlineVisuals.CreateOutlinePolyline(
+                _context.LineColor, dashed: true, thickness: _context.LineThickness);
 
             foreach (var sp in _stroke)
                 line.Points.Add(sp);
@@ -194,7 +195,8 @@ namespace DinoLino.Utilities.Modes
             if (PolylineGeometry.HasSelfIntersection(simplified))
                 simplified = cleaned;
 
-            var poly = OutlineVisuals.CreateOutlinePolyline(_context.LineColor);
+            var poly = OutlineVisuals.CreateOutlinePolyline(
+                _context.LineColor, thickness: _context.LineThickness);
 
             foreach (var p in simplified)
                 poly.Points.Add(p);

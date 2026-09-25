@@ -167,6 +167,33 @@ namespace DinoLino.Utilities
             OnPropertyChanged(nameof(CanRedo));
         }
 
+        /// Rebuilds the session from a saved project: every other specimen's record in
+        /// specimen order, and the loaded specimen's operations as the live working
+        /// set. Nothing is undoable across the load, so the redo stack starts empty.
+        public void RestoreSession(IEnumerable<SpecimenRecord> archived, IEnumerable<WorkOperation> live)
+        {
+            _history.Clear();
+            _redoStack.Clear();
+            _archive.Clear();
+
+            if (archived != null)
+            {
+                foreach (var record in archived.OrderBy(r => r.Ordinal))
+                    _archive.Add(record);
+            }
+
+            if (live != null) _history.AddRange(live);
+
+            foreach (var op in _history)
+                op.ApplyMetadataToMode();
+
+            foreach (var mode in _history.Select(o => o.SourceMode).Where(m => m != null).Distinct().ToList())
+                mode.OnHistoryChanged();
+
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+        }
+
         // Clears all live history and redo state — a hard reset used by "Clear All" /
         // Ctrl+C.
         public void Clear()

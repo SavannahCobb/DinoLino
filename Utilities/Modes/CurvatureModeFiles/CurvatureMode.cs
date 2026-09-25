@@ -416,7 +416,7 @@ namespace DinoLino.Utilities.Modes
                         AspectRatio = AspectRatioResult,
                         ChordArcRatio = ChordArcRatioResult,
                         RadiusImagePixels = _imageCircularRadius
-                    });
+                    }, PointA, PointB, PointC);
 
                     break;
                 case 3:
@@ -461,7 +461,7 @@ namespace DinoLino.Utilities.Modes
             return new Path
             {
                 Stroke = this.LineColor,
-                StrokeThickness = 2,
+                StrokeThickness = this.LineThickness,
                 Data = geometry
             };
         }
@@ -567,7 +567,7 @@ namespace DinoLino.Utilities.Modes
                         PChordArcRatio = PChordArcRatioResult,
                         VertexCurvature = VertexCurvatureResult,
                         VertexRadiusImagePixels = _imageParabolicVertexRadius
-                    });
+                    }, PointA, PointB, PointC);
 
                     break;
                 case 3:
@@ -610,7 +610,7 @@ namespace DinoLino.Utilities.Modes
             PathGeometry geometry = new PathGeometry();
             geometry.Figures.Add(figure);
 
-            return new Path { Data = geometry, Stroke = this.LineColor, StrokeThickness = 2 };
+            return new Path { Data = geometry, Stroke = this.LineColor, StrokeThickness = this.LineThickness };
         }
 
         private List<Vector2> SampleParabolaWorldPoints(Vector2 origin, Vector2 xAxis, Vector2 yAxis, double chordLength, int count)
@@ -828,8 +828,12 @@ namespace DinoLino.Utilities.Modes
                 OperationKind = operationKind,
                 TurningAngleArcRatio = TurningAngleArcRatioResult,
                 SChordArcRatio = SChordArcRatioResult,
-                SplineLengthImagePixels = imageLength
-            });
+                SplineLengthImagePixels = imageLength,
+
+                // The curve is what was measured and what ImagePoints keeps; these are
+                // the points it was drawn through.
+                ControlImagePoints = ToImagePoints(controlPoints) ?? new List<Point>()
+            }, densePoints);
 
             _splinePoints.Clear();
             _splinePreview = null;
@@ -916,7 +920,7 @@ namespace DinoLino.Utilities.Modes
             _freehandPreview = new Polyline
             {
                 Stroke = this.LineColor,
-                StrokeThickness = 2
+                StrokeThickness = this.LineThickness
             };
             _freehandPreview.Points.Add(new Point(mousePos.X, mousePos.Y));
 
@@ -1326,7 +1330,7 @@ namespace DinoLino.Utilities.Modes
 
             var geometry = new PathGeometry();
             geometry.Figures.Add(figure);
-            return new Path { Stroke = this.LineColor, StrokeThickness = 2, Data = geometry };
+            return new Path { Stroke = this.LineColor, StrokeThickness = this.LineThickness, Data = geometry };
         }
 
         private Path MakeSchneiderBezierPath(List<Vector2> controlPoints, double tolerance = 2.0)
@@ -1355,7 +1359,7 @@ namespace DinoLino.Utilities.Modes
             figure.Segments = pathSegments;
             var geometry = new PathGeometry();
             geometry.Figures.Add(figure);
-            return new Path { Stroke = this.LineColor, StrokeThickness = 2, Data = geometry };
+            return new Path { Stroke = this.LineColor, StrokeThickness = this.LineThickness, Data = geometry };
         }
         #endregion
 

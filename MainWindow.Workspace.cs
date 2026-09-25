@@ -162,7 +162,9 @@ namespace DinoLino
             if (SpecimenManager.HasOpenedImage)
                 UndoRedoManager.StashActiveSpecimen(SpecimenManager.CurrentSpecimen, SpecimenManager.DisplayName);
 
-            SetWorkspaceImage(bmp, System.IO.Path.GetFileName(path), registerAsNewSpecimen: true);
+            SetWorkspaceImage(
+                bmp, System.IO.Path.GetFileName(path), registerAsNewSpecimen: true,
+                sourcePath: FullPath(path));
 
             // A 2D image does not use the 3D reposition workflow.
             _workingImageIsModelCapture = false;
@@ -171,10 +173,27 @@ namespace DinoLino
             UI_MenuReposition3D.IsEnabled = false;
         }
 
+        /// The absolute form of a path, or the path itself when it cannot be resolved.
+        /// Stored on the specimen so a saved session can find the photograph again.
+        private static string FullPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+
+            try
+            {
+                return System.IO.Path.GetFullPath(path);
+            }
+            catch
+            {
+                return path;
+            }
+        }
+
         /// <summary>
         /// Loads an image into the workspace and refreshes all state derived from it.
         /// </summary>
-        private void SetWorkspaceImage(BitmapSource bmp, string specimenName, bool registerAsNewSpecimen)
+        private void SetWorkspaceImage(
+            BitmapSource bmp, string specimenName, bool registerAsNewSpecimen, string sourcePath = null)
         {
             // Before the specimen changes underneath it.
             CloseAdjustmentWindow();
@@ -183,7 +202,7 @@ namespace DinoLino
             UI_WorkImage.Source = WorkingImage;
 
             if (registerAsNewSpecimen)
-                SpecimenManager.OnImageOpened(bmp, specimenName);
+                SpecimenManager.OnImageOpened(bmp, specimenName, sourcePath);
 
             // Scale, alignment and picture corrections all belong to the specimen and
             // come back with it.
@@ -256,6 +275,23 @@ namespace DinoLino
             var imagePos = UI_WorkImage.TranslatePoint(new Point(0, 0), UI_WorkCanvas);
             OutlineMode.OffsetX = imagePos.X;
             OutlineMode.OffsetY = imagePos.Y;
+
+            // Outlines are not the only geometry kept in image pixels: every mode
+            // records the points behind its operations, so every mode is told how the
+            // canvas it draws on maps onto the photograph.
+            var imageTransform = new ViewTransform(
+                displayW / WorkingImage.PixelWidth,
+                displayH / WorkingImage.PixelHeight,
+                imagePos.X,
+                imagePos.Y);
+
+            if (AllWorkModes != null)
+            {
+                foreach (var mode in AllWorkModes)
+                {
+                    if (mode != null) mode.ImageTransform = imageTransform;
+                }
+            }
 
             if (ScaleCalibration.UpdateViewScale(displayW / WorkingImage.PixelWidth))
                 RefreshAllScalePlaceholders();
@@ -402,9 +438,12 @@ namespace DinoLino
             if (w <= 0 || h <= 0) return null;
 
             var cursorVis = UI_DotCursor.Visibility;
+            var ringVis = _brushRing != null ? _brushRing.Visibility : Visibility.Collapsed;
+
             try
             {
                 UI_DotCursor.Visibility = Visibility.Collapsed;
+                if (_brushRing != null) _brushRing.Visibility = Visibility.Collapsed;
                 UI_WorkSpace.UpdateLayout();
 
                 var rtb = new RenderTargetBitmap(
@@ -417,6 +456,7 @@ namespace DinoLino
             finally
             {
                 UI_DotCursor.Visibility = cursorVis;   // Restore the cursor even if rendering fails.
+                if (_brushRing != null) _brushRing.Visibility = ringVis;
                 UI_WorkSpace.UpdateLayout();
             }
         }
@@ -554,6 +594,10 @@ namespace DinoLino
             }
 
             ResetSession();
+
+            // The kept copy describes the session that has just been thrown away, and
+            // offering it back would undo what the user has confirmed twice.
+            AutoSave.Discard();
         }
 
         /// <summary>
@@ -597,6 +641,10 @@ namespace DinoLino
             CustomTableSelection.Clear();
             WorkshopColumnFilter.RestoreAll();
             GeomOpHistoryWindow.ClearStagedSheets();
+
+            // Committed silhouettes are held by specimen name, so leaving them would
+            // attach one session's outlines to the next session's specimens.
+            CommittedOutlineStore.Clear();
 
             // The workspace, its calibration, and the mesh kept in memory for a
             // reposition. ClearWorkspaceImage covers the rest of the 3D state.
@@ -681,6 +729,66 @@ namespace DinoLino
             }
 
             EndScaleCue();
+        }
+
+        // =====================
+        // Outline brush cue
+        // =====================
+
+        // The outline edit brushes shown at the size they will touch. One ring
+        // serves all three: only ever one of them is armed.
+        private Ellipse _brushRing;
+
+        /// <summary>Softest fill that still reads as a disc over a photograph.</summary>
+        private static readonly Brush BrushRingFill =
+            new SolidColorBrush(Color.FromArgb(56, 255, 235, 59));
+
+        private static readonly Brush BrushRingEdge =
+            new SolidColorBrush(Color.FromArgb(210, 245, 190, 0));
+
+        /// Shows where an outline edit brush would reach: a see-through yellow disc
+        /// of the brush's own size, centred on the cursor. The radius is in canvas
+        /// pixels, which is the space the brush works in, so the disc keeps covering
+        /// what it will touch however far the image is zoomed.
+        private void ShowBrushRing(Vector2 centre, double radiusCanvas)
+        {
+            if (radiusCanvas <= 0)
+            {
+                HideBrushRing();
+                return;
+            }
+
+            if (_brushRing == null)
+            {
+                _brushRing = new Ellipse
+                {
+                    Fill = BrushRingFill,
+                    Stroke = BrushRingEdge,
+                    StrokeThickness = 1,
+
+                    // A cue, not a target: clicks belong to the workspace under it.
+                    IsHitTestVisible = false
+                };
+
+                // Above the outline it is about to edit, whatever else is on the canvas.
+                Panel.SetZIndex(_brushRing, 1000);
+            }
+
+            // Clearing the workspace takes it off the canvas; it goes back on the
+            // next time the cursor moves.
+            if (_brushRing.Parent == null) AddElementToWorkSpace(_brushRing);
+
+            double diameter = radiusCanvas * 2;
+            _brushRing.Width = diameter;
+            _brushRing.Height = diameter;
+            _brushRing.SetPosition(centre.X - radiusCanvas, centre.Y - radiusCanvas);
+            _brushRing.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>Takes the brush cue off screen, without discarding it.</summary>
+        internal void HideBrushRing()
+        {
+            if (_brushRing != null) _brushRing.Visibility = Visibility.Collapsed;
         }
 
         /// Places the cue dot at the given canvas position and switches to a

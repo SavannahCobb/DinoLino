@@ -34,6 +34,8 @@ namespace DinoLino.Utilities
 
             if (existing != null) _columns.Remove(existing);
             else _columns.Add(new CustomTableColumn { Category = category, Header = header });
+
+            ProjectSession.MarkChanged();
         }
 
         public static void Clear() => _columns.Clear();

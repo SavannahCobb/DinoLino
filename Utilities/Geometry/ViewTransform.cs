@@ -104,6 +104,9 @@ namespace DinoLino.Utilities.Modes
         /// <summary>Stroke brush used for committed outlines and previews.</summary>
         Brush LineColor { get; }
 
+        /// <summary>Stroke width the mode is drawing at, in canvas pixels.</summary>
+        double LineThickness { get; }
+
         /// <summary>True when an image is loaded and hand-draw is allowed to start.</summary>
         bool HasImage { get; }
 
@@ -136,13 +139,16 @@ namespace DinoLino.Utilities.Modes
             return d;
         }
 
-        /// <summary>Creates an empty outline polyline in the standard stroke style.</summary>
-        internal static Polyline CreateOutlinePolyline(Brush stroke, bool dashed = false)
+        /// Creates an empty outline polyline in the standard stroke style. The
+        /// thickness is the one the mode is drawing at, so an outline matches every
+        /// other measurement on the image.
+        internal static Polyline CreateOutlinePolyline(
+            Brush stroke, bool dashed = false, double thickness = 2)
         {
             var poly = new Polyline
             {
                 Stroke = stroke,
-                StrokeThickness = 2,
+                StrokeThickness = thickness,
                 FillRule = FillRule.EvenOdd
             };
 

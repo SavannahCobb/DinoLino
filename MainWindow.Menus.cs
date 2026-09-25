@@ -351,21 +351,33 @@ namespace DinoLino
         /// to every work mode rather than only the tab that happens to be open. A mode
         /// that never heard the choice would otherwise keep drawing in the color it
         /// started with, which is what a tab switched to after picking a color did.
-        private void Menu_Color_Click(object sender, RoutedEventArgs e)
+        /// Opens the Line Options window, or brings back the one already open. It is
+        /// modeless, so a change can be judged against the image it is drawn on.
+        private void Menu_LineOptions(object sender, RoutedEventArgs e)
         {
-            if (sender is RadioButton rb && rb.Tag != null)
+            if (_lineOptionsWindow != null)
             {
-                var brush = (Brush)new BrushConverter().ConvertFromString(rb.Tag.ToString());
-
-                if (AllWorkModes == null)
-                {
-                    CurrentWorkMode.LineColor = brush;
-                    return;
-                }
-
-                foreach (var mode in AllWorkModes)
-                    mode.LineColor = brush;
+                _lineOptionsWindow.Activate();
+                return;
             }
+
+            var window = new LineOptionsWindow(_lineColorTag, _lineThickness)
+            {
+                Owner = this,
+                FontSize = _currentFontSize,
+                FontFamily = _currentFont
+            };
+
+            window.OnColorChanged = choice => ApplyLineColor(choice);
+            window.OnThicknessChanged = thickness => ApplyLineThickness(thickness);
+
+            window.Closed += (s, args) =>
+            {
+                if (ReferenceEquals(_lineOptionsWindow, window)) _lineOptionsWindow = null;
+            };
+
+            _lineOptionsWindow = window;
+            window.Show();
         }
 
         // ---- Settings ----

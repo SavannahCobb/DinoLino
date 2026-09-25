@@ -145,6 +145,20 @@ namespace DinoLino
 
         private void Directory_ApplyTypedPath(object sender, RoutedEventArgs e) => ApplyTypedPath();
 
+        /// Clicking a folder in the tree offers it to the path box, so Set applies
+        /// that folder without it having to be typed. A file is left alone: choosing
+        /// one is how it gets opened, not a way of naming a working directory.
+        private void DirectoryTree_SelectionChanged(
+            object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            string path = (e.NewValue as TreeViewItem)?.Tag as string;
+
+            if (string.IsNullOrEmpty(path)) return;
+            if (!Directory.Exists(path)) return;
+
+            UI_WorkingDirectoryBox.Text = path;
+        }
+
         /// Sets the working directory from whatever is in the path box. A pasted file
         /// path is accepted too and resolves to the folder containing that file, since
         /// copying a file path is the easier thing to do in Explorer.

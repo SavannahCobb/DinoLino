@@ -17,6 +17,16 @@ namespace DinoLino.Utilities
     {
         public BitmapSource Image { get; set; }   // null = released from the cache
         public string FileName { get; set; }      // shown in the "Loaded: X" label
+
+        // Full path of the image file this specimen was opened from, so the photograph
+        // can be found again after the session has ended. Null for a specimen whose
+        // picture came from a captured 3D view rather than from a file of its own.
+        public string SourcePath { get; set; }
+
+        // True once the picture held here differs from the file it came from, which
+        // rotating and flipping both do. The measurements belong to the picture as
+        // edited, so the file alone no longer reproduces them.
+        public bool ImageEdited { get; set; }
         public string Name { get; set; }          // null => use the auto "Specimen N"
 
         // Creation index of this specimen (0-based, never changes: specimen records are
@@ -247,14 +257,17 @@ namespace DinoLino.Utilities
 
         //----- Image open -----//
 
-        // Called by MainWindow whenever an image is registered as a new specimen.
-        public void OnImageOpened(BitmapSource image, string fileName)
+        // Called by MainWindow whenever an image is registered as a new specimen. The
+        // source path is the file the picture was read from, and is null for a picture
+        // captured from a 3D model.
+        public void OnImageOpened(BitmapSource image, string fileName, string sourcePath = null)
         {
             if (!_hasOpenedImage)
             {
                 _hasOpenedImage = true;
                 Current.Image = image;
                 Current.FileName = fileName;
+                Current.SourcePath = sourcePath;
             }
             else
             {
@@ -262,6 +275,7 @@ namespace DinoLino.Utilities
                 {
                     Image = image,
                     FileName = fileName,
+                    SourcePath = sourcePath,
                     Ordinal = _specimens.Count   // creation index, stable for the session
                 });
                 _current = _specimens.Count - 1;
@@ -274,7 +288,8 @@ namespace DinoLino.Utilities
         // Adds one specimen without changing which one is loaded, so a whole folder can
         // be registered before the workspace switches to the first of them. A 3D model
         // arrives with a null image and its path in modelPath.
-        public Specimen ImportSpecimen(BitmapSource image, string fileName, string modelPath)
+        public Specimen ImportSpecimen(
+            BitmapSource image, string fileName, string modelPath, string sourcePath = null)
         {
             Specimen target;
 
@@ -286,6 +301,7 @@ namespace DinoLino.Utilities
                 target = Current;
                 target.Image = image;
                 target.FileName = fileName;
+                target.SourcePath = sourcePath;
                 target.PendingModelPath = modelPath;
                 target.ModelPath = modelPath;
             }
@@ -295,6 +311,7 @@ namespace DinoLino.Utilities
                 {
                     Image = image,
                     FileName = fileName,
+                    SourcePath = sourcePath,
                     PendingModelPath = modelPath,
                     ModelPath = modelPath,
                     Ordinal = _specimens.Count   // creation index, stable for the session
@@ -348,6 +365,10 @@ namespace DinoLino.Utilities
             if (specimen.Image == null) return;
 
             specimen.Image = image;
+
+            // The picture and the file have parted company: what is measured from here
+            // on belongs to this version of the image, not to the one on disk.
+            specimen.ImageEdited = true;
         }
 
         //----- Duplication -----//
@@ -388,6 +409,8 @@ namespace DinoLino.Utilities
                 // once loaded, so a duplicate costs a reference and nothing more.
                 Image = original.Image,
                 FileName = original.FileName,
+                SourcePath = original.SourcePath,
+                ImageEdited = original.ImageEdited,
                 Name = name,
                 Ordinal = at + 1,
 

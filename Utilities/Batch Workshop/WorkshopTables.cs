@@ -80,6 +80,19 @@ namespace DinoLino.Utilities
                 if (specimen != null)
                     map[specimen] = groupName;
             }
+
+            ProjectSession.MarkChanged();
+        }
+
+        /// Makes a column that no specimen is assigned to yet, so a column saved in
+        /// a project comes back even when everything that was in it has gone.
+        public static void EnsureColumn(string column)
+        {
+            column = Clip(column);
+            if (column.Length == 0 || _values.ContainsKey(column)) return;
+
+            _values[column] = new Dictionary<Specimen, string>();
+            _columns.Add(column);
         }
 
         /// <summary>Removes every group column and assignment.</summary>
@@ -151,9 +164,22 @@ namespace DinoLino.Utilities
                 _hidden[table] = set;
             }
             set.Add(column);
+            ProjectSession.MarkChanged();
         }
 
-        public static void Restore(string table) => _hidden.Remove(table);
+        /// <summary>Columns hidden from one table, for a project file to record.</summary>
+        public static IEnumerable<string> HiddenColumns(string table)
+        {
+            HashSet<string> set;
+            return _hidden.TryGetValue(table, out set)
+                ? (IEnumerable<string>)set.ToList()
+                : new List<string>();
+        }
+
+        public static void Restore(string table)
+        {
+            if (_hidden.Remove(table)) ProjectSession.MarkChanged();
+        }
 
         /// <summary>Un-hides every column of every table.</summary>
         public static void RestoreAll() => _hidden.Clear();

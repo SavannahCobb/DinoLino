@@ -66,6 +66,16 @@ namespace DinoLino.Utilities
         /// <summary>An unaligned specimen, which is also the default value.</summary>
         public static AlignmentState None => default;
 
+        /// The orientation a saved project describes. A project stores the angle
+        /// itself rather than the line it was drawn from, so this is the way back in
+        /// for an orientation that has already been checked once.
+        public static AlignmentState FromRadians(double rotationRadians, AlignmentAxis drawnAxis)
+        {
+            if (double.IsNaN(rotationRadians) || double.IsInfinity(rotationRadians)) return None;
+
+            return new AlignmentState(rotationRadians, drawnAxis);
+        }
+
         /// The orientation a drawn axis line describes, or None when the line is too
         /// short for its angle to mean anything. Both the accept action and the
         /// dialog's ready check read this, so there is one definition of usable.
@@ -146,6 +156,7 @@ namespace DinoLino.Utilities
                 if (_state == value) return;
                 _state = value;
                 if (_owner != null) _owner.Alignment = value;
+                ProjectSession.MarkChanged();
                 NotifyAll();
             }
         }

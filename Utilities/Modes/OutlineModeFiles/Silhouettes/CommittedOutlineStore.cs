@@ -187,6 +187,8 @@ namespace DinoLino.Utilities
             };
 
             _outlines.Add(entry);
+            ProjectSession.MarkChanged();
+
             return entry;
         }
 
@@ -204,6 +206,7 @@ namespace DinoLino.Utilities
             if (string.Equals(clean, outline.Name, StringComparison.OrdinalIgnoreCase))
             {
                 outline.Name = clean;
+                ProjectSession.MarkChanged();
                 return true;
             }
 
@@ -214,6 +217,8 @@ namespace DinoLino.Utilities
             }
 
             outline.Name = clean;
+            ProjectSession.MarkChanged();
+
             return true;
         }
 
@@ -234,6 +239,8 @@ namespace DinoLino.Utilities
             };
 
             _outlines.Insert(at + 1, copy);
+            ProjectSession.MarkChanged();
+
             return copy;
         }
 
@@ -285,11 +292,22 @@ namespace DinoLino.Utilities
             return name.Substring(0, name.Length - 2);
         }
 
-        public static bool Remove(CommittedOutline outline) => _outlines.Remove(outline);
+        public static bool Remove(CommittedOutline outline)
+        {
+            if (!_outlines.Remove(outline)) return false;
+
+            ProjectSession.MarkChanged();
+            return true;
+        }
 
         /// <summary>Drops every silhouette stored for one specimen.</summary>
-        public static void RemoveFor(string specimenName) =>
-            _outlines.RemoveAll(o => string.Equals(o.SpecimenName, specimenName, StringComparison.Ordinal));
+        public static void RemoveFor(string specimenName)
+        {
+            int removed = _outlines.RemoveAll(
+                o => string.Equals(o.SpecimenName, specimenName, StringComparison.Ordinal));
+
+            if (removed > 0) ProjectSession.MarkChanged();
+        }
 
         /// <summary>Empties the store. Called alongside the other session resets.</summary>
         public static void Clear() => _outlines.Clear();

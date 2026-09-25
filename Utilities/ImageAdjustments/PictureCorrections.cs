@@ -84,6 +84,7 @@ namespace DinoLino.Utilities
                 if (_state == value) return;
                 _state = value;
                 if (_owner != null) _owner.Corrections = value;
+                ProjectSession.MarkChanged();
             }
         }
 

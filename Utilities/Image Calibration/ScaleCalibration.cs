@@ -32,6 +32,20 @@ namespace DinoLino.Utilities
         /// <summary>An uncalibrated specimen, which is also the default value.</summary>
         public static ScaleState None => default;
 
+        /// The calibration a saved project describes. A project stores the ratio
+        /// itself rather than the line it was measured from, so this is the way back
+        /// in for a value that has already been checked once.
+        public static ScaleState FromUnitsPerImagePixel(double unitsPerImagePixel, string unit)
+        {
+            if (unitsPerImagePixel <= 0
+                || double.IsNaN(unitsPerImagePixel)
+                || double.IsInfinity(unitsPerImagePixel)) return None;
+
+            if (string.IsNullOrEmpty(unit)) return None;
+
+            return new ScaleState(unitsPerImagePixel, unit);
+        }
+
         /// The calibration a measured line describes, or None when the line is too
         /// short or the entered length is not positive.
         public static ScaleState FromLine(double imagePixelLength, double realLength, string unit)
@@ -107,6 +121,7 @@ namespace DinoLino.Utilities
                 if (_state == value) return;
                 _state = value;
                 if (_owner != null) _owner.Calibration = value;
+                ProjectSession.MarkChanged();
                 NotifyAll();
             }
         }

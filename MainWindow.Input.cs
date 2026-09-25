@@ -82,6 +82,14 @@ namespace DinoLino
                 e.Handled = true;
             }
 
+            // Both threes, so the shortcut works from the number row and the keypad.
+            if (Keyboard.Modifiers == ModifierKeys.Control
+                && (e.Key == Key.D3 || e.Key == Key.NumPad3))
+            {
+                Menu_Open3DModel(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+
             if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.H)
             {
                 Menu_SeeHistory(this, new RoutedEventArgs());
@@ -91,6 +99,24 @@ namespace DinoLino
             if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.E)
             {
                 Menu_ExportHistory(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.N)
+            {
+                Menu_NewProject(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O)
+            {
+                Menu_OpenProject(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+
+            if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.S)
+            {
+                Menu_SaveProject(this, new RoutedEventArgs());
                 e.Handled = true;
             }
 
@@ -468,6 +494,11 @@ namespace DinoLino
 
         private void WorkSpace_MouseMove(object sender, MouseEventArgs e)
         {
+            // Taken off first and put back by whichever branch still wants it, so the
+            // cue cannot be left behind by a move that ends early — panning, or a
+            // scale or alignment capture taking the cursor over.
+            HideBrushRing();
+
             if (_isPanning)
             {
                 Point now = e.GetPosition(UI_WorkSpace);
@@ -520,6 +551,11 @@ namespace DinoLino
         /// since its strokes have explicit begin and end points.
         private void RouteOutlineBrush(OutlineMode om, Vector2 mousePos, bool buttonHeld)
         {
+            // Shown whenever an edit brush is armed, held down or not: the point of
+            // it is to say what would be touched before anything is.
+            double radius = ArmedBrushRadius(om);
+            if (radius > 0) ShowBrushRing(mousePos, radius);
+
             bool brushing = buttonHeld
                 || (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
 
@@ -539,6 +575,24 @@ namespace DinoLino
                 om.Smooth.ProcessLocalDrag(mousePos);
             else if (buttonHeld && om.HandDrawMode)
                 om.HandDraw.ProcessDrag(mousePos);
+        }
+
+        /// The radius of whichever edit brush is armed, in canvas pixels, or zero
+        /// when none of them is. Hand-draw is not one of them: it follows the cursor
+        /// exactly rather than reaching around it.
+        private static double ArmedBrushRadius(OutlineMode om)
+        {
+            if (om.EraseOutlineMode) return om.Erase.BrushRadius;
+            if (om.PushOutlineMode) return om.Push.BrushRadius;
+            if (om.SmoothOutlineMode && om.Smooth.IsLocalScope) return om.Smooth.BrushRadius;
+
+            return 0;
+        }
+
+        /// <summary>Takes the outline brush cue away with the cursor.</summary>
+        private void WorkSpace_MouseLeave(object sender, MouseEventArgs e)
+        {
+            HideBrushRing();
         }
 
         private void WorkSpace_MouseUp(object sender, MouseButtonEventArgs e)

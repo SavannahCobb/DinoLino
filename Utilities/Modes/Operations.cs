@@ -14,6 +14,18 @@ namespace DinoLino.Utilities.Operations
         public List<UIElement> Elements { get; set; } = new List<UIElement>();
         public WorkMode SourceMode { get; set; }
 
+        /// The points that define this operation, in image pixels: the space every
+        /// stored measurement uses, so they mean the same thing whatever the window
+        /// size or the zoom. The elements above are the drawing as it sits on the
+        /// canvas today; these are the geometry behind it, which is what lets the same
+        /// operation be drawn again later.
+        ///
+        /// What the points are depends on the kind of operation: the three clicks of a
+        /// circular or parabolic arc (chord start, chord end, bisector end), the curve
+        /// itself for a spline, the three vertices of a triangle, two opposite corners
+        /// for a drawn shape, the two ends of a line, and the vertices of an outline.
+        public List<Point> ImagePoints { get; set; } = new List<Point>();
+
         /// <summary>
         /// Restores the mode-specific metadata saved with this operation.
         /// </summary>
@@ -71,6 +83,11 @@ namespace DinoLino.Utilities.Operations
     /// </summary>
     public class SplineOperation : WorkOperation
     {
+        /// The points the user placed, in image pixels: the clicked points of a
+        /// Catmull-Rom or Bezier spline, or the ones a freehand stroke was reduced to.
+        /// ImagePoints holds the curve they produced, which is what was measured.
+        public List<Point> ControlImagePoints { get; set; } = new List<Point>();
+
         public double TurningAngleArcRatio { get; set; }
         public double SChordArcRatio { get; set; }
 

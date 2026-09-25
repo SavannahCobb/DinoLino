@@ -253,6 +253,7 @@ namespace DinoLino.Utilities.Modes
                 case 1:
                     // Second click finalizes the size, computes results, and commits the operation.
                     var (width, height) = GetConstrainedShapeSize(mousePos);
+                    var (left, top) = GetShapePosition(mousePos, width, height);
 
                     CalculateAndUpdateResults(width, height);
 
@@ -267,7 +268,11 @@ namespace DinoLino.Utilities.Modes
                         DrawAspectRatio = DrawAspectRatioResult,
                         RelativeArea = RelativeAreaResult,
                         ShapeAreaImagePixels = _imageShapeArea
-                    });
+                    },
+                    // Opposite corners of the rectangle just measured, so the geometry
+                    // recorded and the area recorded describe the same shape.
+                    new Vector2(left, top),
+                    new Vector2(left + width, top + height));
 
                     FinishOperation();
                     break;
@@ -311,7 +316,7 @@ namespace DinoLino.Utilities.Modes
             }
 
             shape.Stroke = LineColor;
-            shape.StrokeThickness = 2;
+            shape.StrokeThickness = LineThickness;
             shape.Width = width;
             shape.Height = height;
             Canvas.SetLeft(shape, x);
@@ -493,7 +498,9 @@ namespace DinoLino.Utilities.Modes
                 LineLengthRatio = LineLengthRatioResult,
                 LineAngle = LineAngleResult,
                 HeadingDegrees = HeadingOf(dx, dy)
-            });
+            },
+            new Vector2(_currentLine.X1, _currentLine.Y1),
+            new Vector2(_currentLine.X2, _currentLine.Y2));
         }
 
         /// The most recent committed line with real length, or null when this is the

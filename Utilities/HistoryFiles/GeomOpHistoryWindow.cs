@@ -305,6 +305,7 @@ namespace DinoLino.Utilities
                 if (!_selectedSheets.Remove(header))
                     _selectedSheets.Add(header);
 
+                ProjectSession.MarkChanged();
                 addButton.Content = WorkbookButtonLabel(IsInWorkbook(header));
                 UpdateWorkbookStatus();
             };
@@ -593,6 +594,21 @@ namespace DinoLino.Utilities
                 window.Result);
 
             BuildTabs();
+        }
+
+        /// <summary>Sheet names staged for the workbook, for a project file to record.</summary>
+        public static IEnumerable<string> StagedSheetNames() => _selectedSheets.ToList();
+
+        /// <summary>Restores the staged sheets a project file recorded.</summary>
+        public static void StageSheets(IEnumerable<string> names)
+        {
+            _selectedSheets.Clear();
+            if (names == null) return;
+
+            foreach (var name in names)
+            {
+                if (!string.IsNullOrEmpty(name)) _selectedSheets.Add(name);
+            }
         }
 
         private static bool IsInWorkbook(string sheetName) => _selectedSheets.Contains(sheetName);

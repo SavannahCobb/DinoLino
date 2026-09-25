@@ -8,6 +8,31 @@ Each image opened is treated as a specimen that keeps its own scale, alignment, 
 
 The version number and list of contributors are in the About window of the Help menu.
 ------------------------------------------------------------------------------------------------
+PROJECTS:
+
+A project is a whole session in one file: every specimen with its picture, scale, alignment and picture corrections, every measurement together with the geometry behind it, the outlines kept as silhouettes, and the table state that goes with them. That last part covers the group columns, the formula columns, the variables chosen for the Custom table, the columns hidden from a table, and the tables staged for the workbook.
+
+Save Project:
+Writes the session to a project file. The first save asks where to put it, and later saves go back to the same file. Save Project As writes the session to another file and carries on in that one.
+
+Open Project:
+Replaces the session with the one in the file. Anything the current session holds that has not been saved is offered a save first.
+
+New Project:
+Empties the session and starts again, offering the same save first.
+
+Autosave:
+While a session holds anything a project file does not, DinoLino keeps a copy of it every few minutes, and again when the program closes. The copy is kept with the program's settings rather than beside the project, so a session that has never been saved is kept as well.
+
+Closing the program asks nothing. If there was work outstanding, the next start offers it back, naming the project it belonged to and when it was kept. Saving the project, starting a new one and opening another all remove the kept copy, and so does turning the offer down.
+
+Pictures:
+A photograph is referenced by where it sits on disk rather than copied into the project, which keeps the project file small. The path is read relative to the project first, so a project and its photographs can be moved together as long as they keep the same arrangement. A picture that no file on disk reproduces is stored inside the project instead: a view captured from a 3D model, or an image rotated or flipped since it was opened.
+
+A photograph that cannot be found when a project opens is named, and its specimen comes back with its measurements but no picture. Opening that image again brings the picture back.
+
+The title bar shows which project the session belongs to, with a star beside the name while the session holds something the project file does not.
+------------------------------------------------------------------------------------------------
 GLOBAL METHODS:
 
 Undo:	
@@ -42,6 +67,10 @@ Undo: 					Ctrl + Z
 Redo: 					Ctrl + Y
 Clear: 					Ctrl + C
 Open image: 			Ctrl + F
+Open 3D model:			Ctrl + 3
+New project:			Ctrl + N
+Open project:			Ctrl + O
+Save project:			Ctrl + Shift + S
 View history: 			Ctrl + H
 Export history: 		Ctrl + E
 Take screenshot: 		Ctrl + S
@@ -175,6 +204,9 @@ Tip: To reduce computational expense and increase performance speed, try croppin
 ----- Draw by Hand -----
 Click, hold the left mouse button, and drag to draw an outline. The outline closes automatically when the stroke crosses itself.
 
+----- Erase, Push and Local Smooth -----
+Each of these reaches around the cursor rather than following it exactly, so the cursor carries a see-through yellow disc the size of the brush. It shows how much of the outline will be taken in before anything is touched, and it keeps that size as the image is zoomed.
+
 ----- Erase -----
 Click, hold the left mouse button, and drag anywhere on the outline to erase that part. Set the eraser size using the slider.
 Alternately, hold the 'Alt' button and drag the cursor to erase part of the outline. This may be more convenient when using a trackpad.
@@ -210,9 +242,12 @@ Commit Outline to History: Saves the outline and its metadata as an operation.
 FILE:
 
 ----- Open Image ----- 
+Resting on Open Image offers two kinds of file, 2D Image and 3D Model.
+
+2D Image:
 Open a 2D image file to analyze. Supported formats include .jpg, .png, .tif, and .bmp. 
 
------ Open 3D Model (.ply) ----- 
+3D Model:
 Open a 3D file to analyze. PLY, OBJ, and STL files are supported. 
 Position the model by pressing the scroll wheel and dragging, or by pressing the arrow keys. 
 Click 'Capture View' to finish positioning the object. This will save the view as a 2D image, which the user can begin measuring.
@@ -222,9 +257,6 @@ Note: DinoLino is currently limited to 2D morphometrics. Measurements may only b
 ----- Import Folder -----
 Import a folder of images to analyze. Incompatible file types will be ignored.
 Folders that contain several large files may take several minutes to import.
-
------ Take Screenshot ----- 
-Take a screenshot of the current software image screen. The screenshot may be saved as a .jpg, .png, or .tif file. The screenshot will include all drawn elements. 
 
 ----- Export Operation History -----
 Export the history of all operations performed. Undone or cleared operations will not be included. The exported file will be a workbook in .xlsx format, with each operation's history on a separate sheet.
@@ -271,10 +303,16 @@ Rotate image by 90 degrees clockwise or counterclockwise.
 ----- Reposition 3D Object -----
 Return to the 3D image viewer after capturing view of a 3D image to reposition the object. Click 'Capture View' when ready to save the new view as a 2D image, which the user can begin measuring.
 
------ Clear Image Cache -----
+----- Take Screenshot ----- 
+Take a screenshot of the current software image screen. The screenshot may be saved as a .jpg, .png, or .tif file. The screenshot will include all drawn elements. 
+
+----- Image Cache -----
+Resting on Image Cache offers two choices, Clear and Edit. Neither removes any measurement.
+
+Clear:
 Remove all images from the cache without removing associated measurements.
 
------ Edit Image Cache -----
+Edit:
 Review all cached images and remove them one at a time, without removing associated measurements.
 
 ------------------------------------------------------------------------------------------------
@@ -341,6 +379,7 @@ Navigate file paths, view, and edit the specimens uploaded for a given a session
 
 Files:
 Browse folders and open images or 3D models.
+The working directory can be set three ways: right-click a folder and choose Set Working Directory, click a folder and then click Set, or type or paste a path into the box and click Set or press Enter. Clicking a folder puts its path in the box, so what Set is about to apply is always the path on screen.
 
 Sample:
 View, rename, load, duplicate, or delete specimens in the session.
@@ -355,8 +394,14 @@ A friend to help you work.
 ----- See History ----- 
 View and export CSV tables of all operations performed.
 
------ Line Color ----- 
-Adjust color of drawn elements. Multiple options are available to accommodate colorblindness and ensure operation visibility on any image.
+----- Line Options ----- 
+Opens a window holding the color and the thickness every mode draws at. Both take effect as they are chosen, so the window can be left open while the change is judged against the image underneath.
+
+Color: Adjust color of drawn elements. Multiple options are available to accommodate colorblindness and ensure operation visibility on any image.
+
+Thickness: Adjust the width of drawn elements, from 0.5 to 10. A thin line sits closer to a feature's edge on a large photograph; a thick one stays visible on a small or busy one.
+
+With See Previous Operations switched on, the measurements already on screen are drawn again in the new style. The guide marks a tool shows while a measurement is being made keep their own weight, since they say where a measurement will go rather than being part of one.
 
 ----- Font ----- 
 Adjust font size or font family. Dyslexia-friendly fonts are available. 

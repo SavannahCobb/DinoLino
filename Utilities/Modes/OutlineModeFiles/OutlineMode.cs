@@ -56,6 +56,13 @@ namespace DinoLino.Utilities.Modes
             Erase.OutlineEdited += InvalidateDenseContour;
             Push.OutlineEdited += InvalidateDenseContour;
             Smooth.OutlineEdited += InvalidateDenseContour;
+
+            // The same contract keeps the geometry stored with the committed outline in
+            // step with the shape on screen, so an outline reshaped after it was traced
+            // is the one that would be drawn again.
+            Erase.OutlineEdited += RefreshCommittedGeometry;
+            Push.OutlineEdited += RefreshCommittedGeometry;
+            Smooth.OutlineEdited += RefreshCommittedGeometry;
         }
 
         // ── IOutlineToolContext (explicit: the tools' window into the mode) ──
@@ -63,6 +70,7 @@ namespace DinoLino.Utilities.Modes
         ViewTransform IOutlineToolContext.Transform => _transform;
         double IOutlineToolContext.SimplifyEpsilon => _simplifyEpsilon;
         Brush IOutlineToolContext.LineColor => LineColor;
+        double IOutlineToolContext.LineThickness => LineThickness;
         bool IOutlineToolContext.HasImage => _cachedPixels != null;
         bool IOutlineToolContext.IsHandDrawActive => _handDrawMode;
         int IOutlineToolContext.ImagePixelWidth => _cachedPixels != null ? _cachedWidth : 0;
@@ -607,7 +615,7 @@ namespace DinoLino.Utilities.Modes
                 full, snap, gradient, edgeGradThreshold, _simplifyEpsilon);
             if (simplified == null) return null;
 
-            var poly = OutlineVisuals.CreateOutlinePolyline(LineColor, dashed);
+            var poly = OutlineVisuals.CreateOutlinePolyline(LineColor, dashed, LineThickness);
             var t = Transform;
 
             foreach (var p in simplified)
@@ -781,12 +789,27 @@ namespace DinoLino.Utilities.Modes
                 OperationKind = "Outline",
                 SourceMode = this,
                 Elements = new List<UIElement>(output)
-            });
+            }, _pendingPolyline.Points);
 
             ResetHarmonicAutoDefault(); // new specimen → re-derive the 99% default
             OutlineReady?.Invoke(output);
 
             ClearPendingState();
+        }
+
+        /// Re-reads the committed outline's points after an edit reshapes it. The
+        /// operation is only touched while it is the one holding this very polyline, so
+        /// an outline still being drawn cannot overwrite the record of an earlier one.
+        private void RefreshCommittedGeometry()
+        {
+            if (_activePolyline == null) return;
+
+            if (UndoRedoManager?.CurrentOperation is OutlineOperation op
+                && op.Elements != null
+                && op.Elements.Contains(_activePolyline))
+            {
+                RecordGeometry(op, _activePolyline.Points);
+            }
         }
 
         private void CommitFinalOutline(Polyline poly)
@@ -801,7 +824,7 @@ namespace DinoLino.Utilities.Modes
                 OperationKind = "Outline",
                 SourceMode = this,
                 Elements = new List<UIElement>(output)
-            });
+            }, poly.Points);
 
             ResetHarmonicAutoDefault(); // new specimen → re-derive the 99% default
             OutlineReady?.Invoke(output);
@@ -1258,6 +1281,10 @@ namespace DinoLino.Utilities.Modes
                 op.MetadataSummary = MetadataSummary;
                 op.NormalizationWarning = NormalizationWarning;
                 op.HasMetadata = true;
+
+                // Erase, push and smooth all reshape the committed outline, so the
+                // geometry is taken again here rather than left as it was traced.
+                if (_activePolyline != null) RecordGeometry(op, _activePolyline.Points);
 
                 // HasMetadata flipped on an op already in history; recompute the counter
                 // now since an in-place mutation raises no history-changed event.

@@ -62,6 +62,7 @@ namespace DinoLino.Utilities
             {
                 existing.Name = name;
                 existing.Expression = formula;
+                ProjectSession.MarkChanged();
                 return;
             }
 
@@ -71,11 +72,13 @@ namespace DinoLino.Utilities
                 Name = name,
                 Expression = formula
             });
+
+            ProjectSession.MarkChanged();
         }
 
         public static void Remove(WorkshopFormulaColumn column)
         {
-            if (column != null) _columns.Remove(column);
+            if (column != null && _columns.Remove(column)) ProjectSession.MarkChanged();
         }
 
         /// <summary>Drops every formula column of every table.</summary>

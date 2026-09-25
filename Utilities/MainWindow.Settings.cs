@@ -1,4 +1,5 @@
 ﻿using DinoLino.Utilities;
+using DinoLino.Utilities.Modes;
 using System;
 using System.ComponentModel;
 using System.Windows;
@@ -13,6 +14,13 @@ namespace DinoLino
     /// </summary>
     public partial class MainWindow
     {
+        // What View > Line Options last chose. Kept here rather than read back off a
+        // menu, so the window can open on the values in force.
+        private string _lineColorTag = UserSettings.DefaultLineColor;
+        private double _lineThickness = WorkMode.DefaultLineThickness;
+
+        private LineOptionsWindow _lineOptionsWindow;
+
         // =====================
         // Startup
         // =====================
@@ -52,6 +60,10 @@ namespace DinoLino
         /// defaults are simply what gets kept from here.
         private void RestoreDefaultSettings()
         {
+            // The window shows the values it opened on, which a reset has just moved
+            // out from under it.
+            if (_lineOptionsWindow != null) _lineOptionsWindow.Close();
+
             // An unset line color asks for every mode to be left on the color it
             // already has, which is what an ordinary start wants and what a reset does
             // not: a stale color would outlive the tick that named it. So the default
@@ -91,44 +103,51 @@ namespace DinoLino
             UI_SeeRex.IsChecked = settings.SeeRex;
             Menu_SeeRex(UI_SeeRex, new RoutedEventArgs());
 
-            ApplyLineColor(settings.LineColor);
+            ApplyLineColor(LinePalette.Find(settings.LineColor));
+            ApplyLineThickness(settings.LineThickness);
 
             ApplyFontSize(settings.FontSize);
             ApplyFontFamily(new FontFamily(settings.FontFamily));
         }
 
-        /// Ticks a color's radio button and hands the brush to every work mode, so the
-        /// menu and all four tabs agree from the first click. A name the menu no longer
-        /// offers is ignored, as is none at all.
-        private void ApplyLineColor(string tag)
+        /// Hands a color to every work mode, so all four tabs agree from the moment it
+        /// is chosen. A color the window does not offer is ignored, as is none at all.
+        private void ApplyLineColor(LineColorChoice choice)
         {
-            if (string.IsNullOrEmpty(tag)) return;
+            if (choice == null) return;
 
-            RadioButton chosen = FindLineColorButton(tag);
-            if (chosen == null) return;
-
-            chosen.IsChecked = true;
-
-            // Converted from the button's own tag rather than the text handed in, so
-            // the color name always comes from the menu and can never be malformed.
-            var brush = (Brush)new BrushConverter().ConvertFromString(chosen.Tag.ToString());
+            _lineColorTag = choice.Tag;
 
             foreach (var mode in AllWorkModes)
-                mode.LineColor = brush;
+                mode.LineColor = choice.Brush;
+
+            RestyleShownOperations();
         }
 
-        private RadioButton FindLineColorButton(string tag)
+        /// <summary>Hands a stroke width to every work mode.</summary>
+        private void ApplyLineThickness(double thickness)
         {
-            foreach (object item in UI_LineColor.Items)
-            {
-                if (item is RadioButton button &&
-                    string.Equals(button.Tag as string, tag, StringComparison.OrdinalIgnoreCase))
-                {
-                    return button;
-                }
-            }
+            _lineThickness = WorkMode.ClipThickness(thickness);
 
-            return null;
+            foreach (var mode in AllWorkModes)
+                mode.LineThickness = _lineThickness;
+
+            RestyleShownOperations();
+        }
+
+        /// Draws the measurements already on screen again in the new style, so a
+        /// choice can be judged against the image rather than only against the next
+        /// thing drawn. With previous operations hidden there is nothing on screen to
+        /// restyle, and redrawing would clear a measurement half-made.
+        private void RestyleShownOperations()
+        {
+            if (UI_SeePrevOps == null || !UI_SeePrevOps.IsChecked) return;
+
+            // A measurement part way through lives on the canvas and not yet in the
+            // history a rebuild draws from, so it would be wiped rather than restyled.
+            if (CurrentWorkMode != null && !CurrentWorkMode.IsStartingNewOperation) return;
+
+            RebuildOperationVisuals();
         }
 
         // =====================
@@ -162,7 +181,8 @@ namespace DinoLino
                 SeeDirectory = UI_SeeDirectory.IsChecked,
                 SeeRex = UI_SeeRex.IsChecked,
 
-                LineColor = CheckedLineColorTag(),
+                LineColor = _lineColorTag,
+                LineThickness = _lineThickness,
 
                 FontFamily = _currentFont?.Source,
                 FontSize = _currentFontSize
@@ -170,15 +190,5 @@ namespace DinoLino
             .Save();
         }
 
-        private string CheckedLineColorTag()
-        {
-            foreach (object item in UI_LineColor.Items)
-            {
-                if (item is RadioButton button && button.IsChecked == true)
-                    return button.Tag as string;
-            }
-
-            return null;
-        }
     }
 }

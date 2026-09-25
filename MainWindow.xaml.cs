@@ -55,6 +55,11 @@ namespace DinoLino
             // After the arriving specimen is fully active, return Outline mode to
             // Automated Outline if Generate Metadata had been selected.
             ResetOutlineToolForNewSpecimen();
+
+            // The arriving specimen's marks are drawn for the image now on screen,
+            // once it has been laid out (MainWindow.Project.cs).
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background, new Action(RebuildOperationVisuals));
         }
 
         /// <summary>
@@ -290,6 +295,10 @@ namespace DinoLino
             // Must run after the workspace transforms are initialized above.
             InitializeNavigationAids();
 
+            // The project this session belongs to, and the title that shows it
+            // (MainWindow.Project.cs).
+            InitializeProjectSession();
+
             // Preferences from the user's last session (MainWindow_Settings.cs).
             // Runs last so it settles over the defaults everything above starts at.
             ApplyUserSettings();
@@ -307,6 +316,9 @@ namespace DinoLino
 
             // Reset mode-local drawing state when switching tabs.
             CurrentWorkMode?.ResetDrawingState();
+
+            // The outline brush cue belongs to the tab being left.
+            HideBrushRing();
             BindUndoRedoMenuItems();
 
             UpdateTip();
