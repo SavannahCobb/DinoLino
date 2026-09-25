@@ -1,0 +1,1097 @@
+﻿using DinoLino.Utilities.Operations;
+using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.IO.Packaging;
+using System.Linq;
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Media;
+
+namespace DinoLino.Utilities
+{
+    // Per-session operation viewer: one tab per operation kind, grouped by specimen.
+    // Every tab takes its columns from the Batch Workshop table that measures the
+    // same kind, so the two views and their exports always carry the same variables.
+    // Specimen group columns appear in every grid, CSV, and workbook sheet.
+    public class GeomOpHistoryWindow : Window
+    {
+        #region Fields and tab definitions
+
+        // Sheet names staged for the workbook. Static so the selection outlives the
+        // window and the Batch Workshop's All Geometric Data export can reuse it.
+        private static readonly HashSet<string> _selectedSheets = new();
+
+        private readonly TabControl _tabs = new TabControl();
+
+        // The custom tab's grids, replaced on their own when a variable is ticked so
+        // the list of variables keeps its place.
+        private ContentControl _customData;
+
+        private TextBlock _workbookStatus;
+        private Button _exportWorkbookButton;
+
+        // Kept so the workbook is rebuilt from live history at export time rather
+        // than from the rows captured when the tabs were drawn.
+        private readonly UndoRedoManager _undoRedo;
+        private readonly string _currentName;
+        private readonly ScaleCalibration _scale;
+
+        // One flattened table staged for export: sheet name, column headers, and
+        // rows already formatted as display strings.
+        private class WorkbookSheet
+        {
+            public string Name;
+            public string[] Headers;
+            public List<string[]> Rows;
+        }
+
+        // Backs the editable "Attempt" column header.
+        private class AttemptHeader : INotifyPropertyChanged
+        {
+            private string _text = "Attempt";
+            public string Text
+            {
+                get => _text;
+                set { _text = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Text))); }
+            }
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
+        // One grid row: the attempt label plus the cells, where the cell array is the
+        // specimen's group values followed by the measurement values.
+        private class HistoryRow
+        {
+            public string Attempt { get; set; }
+            public string[] Cells { get; set; }
+        }
+
+        // One tab: the Batch Workshop table its columns come from, and which of that
+        // table's column groups belong to it.
+        private sealed class TabSpec
+        {
+            public string Name;
+            public string FileName;
+            public WorkshopCategory Category;
+            public Func<WorkshopColumnGroup, bool> Pick;
+        }
+
+        // Tab order also fixes sheet order in the exported workbooks.
+        private static readonly TabSpec[] Tabs =
+        {
+            new TabSpec
+            {
+                Name = "Circular Arc",
+                FileName = "circular_arc_history.csv",
+                Category = WorkshopCategory.Curvature,
+                Pick = g => g.OperationType == typeof(CircularArcOperation)
+            },
+            new TabSpec
+            {
+                Name = "Parabolic Arc",
+                FileName = "parabolic_arc_history.csv",
+                Category = WorkshopCategory.Curvature,
+                Pick = g => g.OperationType == typeof(ParabolaOperation)
+            },
+            new TabSpec
+            {
+                Name = "n-Point Spline",
+                FileName = "spline_history.csv",
+                Category = WorkshopCategory.Curvature,
+                Pick = g => g.OperationType == typeof(SplineOperation)
+            },
+            new TabSpec
+            {
+                Name = "Triangle",
+                FileName = "triangle_history.csv",
+                Category = WorkshopCategory.Angle,
+                Pick = g => g.OperationType == typeof(GetAngleOperation)
+            },
+            new TabSpec
+            {
+                // The Shape Data table holds one group per shape kind; all four
+                // belong to this tab.
+                Name = "Shapes",
+                FileName = "shape_history.csv",
+                Category = WorkshopCategory.Shape,
+                Pick = g => g.OperationType == typeof(ShapeOperation)
+            },
+            new TabSpec
+            {
+                Name = "Lines",
+                FileName = "line_history.csv",
+                Category = WorkshopCategory.Shape,
+                Pick = g => g.OperationType == typeof(LineOperation)
+            },
+            new TabSpec
+            {
+                Name = "Outline",
+                FileName = "outline_history.csv",
+                Category = WorkshopCategory.OutlineMetadata,
+                Pick = g => g.OperationType == typeof(OutlineOperation)
+            }
+        };
+
+        public GeomOpHistoryWindow(UndoRedoManager undoRedo, string specimenName, ScaleCalibration scale)
+        {
+            _undoRedo = undoRedo;
+            _currentName = specimenName;
+            _scale = scale;
+
+            Title = "History of operations";
+            Width = 720;
+            Height = 540;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+            var footer = BuildWorkbookFooter();
+            UpdateWorkbookStatus();
+
+            BuildTabs();
+
+            var root = new DockPanel();
+            DockPanel.SetDock(footer, Dock.Bottom);
+            root.Children.Add(footer);
+            root.Children.Add(_tabs);
+            Content = root;
+        }
+
+        // Draws the tab strip, keeping the user on the tab they were reading.
+        private void BuildTabs()
+        {
+            int selected = _tabs.SelectedIndex;
+
+            _tabs.Items.Clear();
+            foreach (var spec in Tabs)
+                _tabs.Items.Add(BuildTab(spec));
+
+            _tabs.Items.Add(BuildCustomTab());
+
+            if (selected >= 0 && selected < _tabs.Items.Count) _tabs.SelectedIndex = selected;
+        }
+
+        // Every specimen, oldest first: archived records then the live one.
+        private static IEnumerable<(string Name, IReadOnlyList<WorkOperation> Ops)> Blocks(
+            UndoRedoManager ur, string currentName)
+        {
+            foreach (var rec in ur.Archive)
+                yield return (rec.SpecimenName, rec.Operations);
+            yield return (currentName, ur.History);
+        }
+
+        #endregion
+
+        #region Tab building
+
+        // One tab's table. The null filter key means the History view shows every
+        // column, whatever has been hidden in a Batch Workshop edit window. The
+        // category is named separately so the tab also carries that table's formula
+        // columns, as far as the operation kinds on the tab can supply them.
+        private static WorkshopTable BuildTable(
+            TabSpec spec, UndoRedoManager ur, string currentName, ScaleCalibration scale)
+        {
+            var groups = WorkshopTables.ColumnGroups(spec.Category, ur, scale)
+                .Where(spec.Pick)
+                .ToList();
+
+            return WorkshopTables.BuildFromGroups(
+                null, groups, ur, currentName, WorkshopTables.KeyFor(spec.Category));
+        }
+
+        // For each specimen, a header and a grid of that kind's operations. The grid
+        // shows the specimen's group columns before the measurement columns, and the
+        // tab's CSV comes from the same table, so the file matches what is on screen.
+        private TabItem BuildTab(TabSpec spec)
+        {
+            var table = BuildTable(spec, _undoRedo, _currentName, _scale);
+            var panel = BuildTableGrids(table);
+
+            var (csvHeaders, csvRows) = table.ToCsv();
+            return WrapTab(spec, table, panel, csvHeaders, csvRows);
+        }
+
+        // One grid per specimen, with the group columns before the measurements.
+        private static StackPanel BuildTableGrids(WorkshopTable table)
+        {
+            var groupColumns = SpecimenGroups.Columns;
+
+            var panel = new StackPanel();
+            var attemptHeader = new AttemptHeader();
+
+            foreach (var block in table.Blocks)
+            {
+                panel.Children.Add(SpecimenHeader(block.Name));
+
+                var grid = MakeGrid();
+                AddAttemptColumn(grid, MakeAttemptHeaderBox(attemptHeader), nameof(HistoryRow.Attempt), 70);
+
+                for (int g = 0; g < groupColumns.Count; g++)
+                    AddColumn(grid, groupColumns[g], $"{nameof(HistoryRow.Cells)}[{g}]");
+
+                for (int i = 0; i < table.MeasurementHeaders.Length; i++)
+                    AddColumn(grid, table.MeasurementHeaders[i],
+                        $"{nameof(HistoryRow.Cells)}[{groupColumns.Count + i}]");
+
+                var groupValues = SpecimenGroups.ValuesFor(block.Name);
+
+                // Attempt 0 marks the placeholder row a specimen with no operations of
+                // this kind gets; it belongs in the export but not on screen.
+                grid.ItemsSource = block.Rows
+                    .Where(r => r.Attempt > 0)
+                    .Select(r => new HistoryRow
+                    {
+                        Attempt = r.Attempt.ToString(),
+                        Cells = groupValues.Concat(r.Cells).ToArray()
+                    })
+                    .ToList();
+
+                panel.Children.Add(grid);
+            }
+
+            return panel;
+        }
+
+        #endregion
+
+        #region Tab chrome and grid helpers
+
+        // Wraps a tab's specimen panel in a scroll viewer + button row (Add column /
+        // Add to workbook / Export to CSV).
+        private TabItem WrapTab(TabSpec spec, WorkshopTable table, StackPanel panel,
+            string[] csvHeaders, List<string[]> csvRows)
+        {
+            var scroll = new ScrollViewer
+            {
+                Content = panel,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+            };
+
+            var formulaButton = new Button
+            {
+                Content = "Add column",
+                Margin = new Thickness(0, 0, 8, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Make a new variable from a formula over this tab's columns. "
+                         + "It joins the Batch Workshop table this tab belongs to, where it can be edited."
+            };
+            formulaButton.Click += (s, e) => AddFormulaColumn(spec, table);
+
+            return WrapContent(
+                spec.Name, spec.FileName, scroll, () => (csvHeaders, csvRows), formulaButton);
+        }
+
+        // The chrome every tab shares: its content over a row of buttons. The rows to
+        // export are asked for at the moment of the click, so a tab that rebuilds its
+        // own content still writes what is on screen.
+        private TabItem WrapContent(
+            string header, string suggestedFileName, UIElement content,
+            Func<(string[] Headers, List<string[]> Rows)> csv, Button extraButton)
+        {
+            var addButton = new Button
+            {
+                Content = WorkbookButtonLabel(IsInWorkbook(header)),
+                Margin = new Thickness(0, 0, 8, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Include this table in the exported workbook"
+            };
+            addButton.Click += (s, e) =>
+            {
+                // Toggle: stage this tab's sheet, or drop it if already staged.
+                if (!_selectedSheets.Remove(header))
+                    _selectedSheets.Add(header);
+
+                ProjectSession.MarkChanged();
+                addButton.Content = WorkbookButtonLabel(IsInWorkbook(header));
+                UpdateWorkbookStatus();
+            };
+
+            var csvButton = new Button
+            {
+                Content = "Export to CSV…",
+                Padding = new Thickness(12, 4, 12, 4)
+            };
+            csvButton.Click += (s, e) =>
+            {
+                var rows = csv();
+                ExportCsv(rows.Headers, rows.Rows, suggestedFileName);
+            };
+
+            var buttonRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(8)
+            };
+
+            if (extraButton != null) buttonRow.Children.Add(extraButton);
+            buttonRow.Children.Add(addButton);
+            buttonRow.Children.Add(csvButton);
+
+            var dock = new DockPanel { Margin = new Thickness(4) };
+            DockPanel.SetDock(buttonRow, Dock.Bottom);
+            dock.Children.Add(buttonRow);
+            dock.Children.Add(content);
+            return new TabItem { Header = header, Content = dock };
+        }
+
+        // A column added from a tab belongs to the Batch Workshop table the tab is
+        // part of, so it appears here, in that table, and in everything built from
+        // either of them.
+        private void AddFormulaColumn(TabSpec spec, WorkshopTable table)
+        {
+            // The formula reads the columns on this tab, but the column it makes joins
+            // the whole table behind it, so a name used anywhere there is not free.
+            var whole = WorkshopTables.Build(spec.Category, _undoRedo, _currentName, _scale);
+
+            var window = new WorkshopFormulaWindow(table, null, whole.MeasurementHeaders)
+            {
+                Owner = this,
+                FontSize = FontSize,
+                FontFamily = FontFamily
+            };
+
+            if (window.ShowDialog() != true) return;
+
+            WorkshopFormulas.Save(
+                null, WorkshopTables.KeyFor(spec.Category), window.ColumnName, window.Result);
+
+            BuildTabs();
+        }
+
+        // ---- Custom tab ----
+
+        /// The Custom tab: variables ticked from any mode, side by side in one table.
+        private TabItem BuildCustomTab()
+        {
+            _customData = new ContentControl { Content = BuildCustomGrids() };
+
+            var body = new DockPanel();
+
+            var picker = BuildVariablePicker();
+            DockPanel.SetDock(picker, Dock.Left);
+            body.Children.Add(picker);
+
+            body.Children.Add(new ScrollViewer
+            {
+                Content = _customData,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+            });
+
+            var addColumn = new Button
+            {
+                Content = "Add column",
+                Margin = new Thickness(0, 0, 8, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Make a new variable from a formula over the columns of this table"
+            };
+            addColumn.Click += (s, e) => EditCustomFormulaColumn(null);
+
+            return WrapContent(CustomTable.Key, CustomTable.FileName, body, CustomCsv, addColumn);
+        }
+
+        private (string[] Headers, List<string[]> Rows) CustomCsv() =>
+            CustomTable.Build(_undoRedo, _currentName, _scale).ToCsv();
+
+        private UIElement BuildCustomGrids()
+        {
+            var table = CustomTable.Build(_undoRedo, _currentName, _scale);
+
+            if (table.MeasurementHeaders.Length == 0 || table.Blocks.Count == 0)
+            {
+                return new TextBlock
+                {
+                    Text = "Tick variables on the left to build a table.",
+                    Opacity = 0.6,
+                    Margin = new Thickness(12)
+                };
+            }
+
+            return BuildTableGrids(table);
+        }
+
+        // Ticking a variable redraws the grids alone, so the list of variables keeps
+        // its scroll position.
+        private void RefreshCustomData()
+        {
+            if (_customData != null) _customData.Content = BuildCustomGrids();
+        }
+
+        // Every variable of every mode, ticked into or out of the custom table, with
+        // that table's own formula columns underneath.
+        private FrameworkElement BuildVariablePicker()
+        {
+            var panel = new StackPanel { Margin = new Thickness(4, 4, 8, 4) };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Variables",
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(4, 4, 4, 2)
+            });
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Tick what the table should hold. Attempt 1 of each kind shares a row, "
+                       + "attempt 2 the next, and so on.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(4, 0, 4, 4)
+            });
+
+            var clear = new Button
+            {
+                Content = "Clear all",
+                Padding = new Thickness(8, 2, 8, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(4, 0, 4, 6)
+            };
+            clear.Click += (s, e) =>
+            {
+                CustomTableSelection.Clear();
+                BuildTabs();
+            };
+            panel.Children.Add(clear);
+
+            var catalog = CustomTable.Catalog(_undoRedo, _currentName, _scale);
+
+            if (catalog.Count == 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "No measurements have been recorded yet.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.6,
+                    Margin = new Thickness(4)
+                });
+            }
+
+            foreach (var group in catalog)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = group.Title,
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(4, 8, 4, 2)
+                });
+
+                foreach (var header in group.Headers)
+                {
+                    var category = group.Category;
+                    string name = header;
+
+                    var tick = new CheckBox
+                    {
+                        Content = name,
+                        IsChecked = CustomTableSelection.IsSelected(category, name),
+                        Margin = new Thickness(8, 1, 4, 1)
+                    };
+                    tick.Click += (s, e) =>
+                    {
+                        CustomTableSelection.Toggle(category, name);
+                        RefreshCustomData();
+                    };
+
+                    panel.Children.Add(tick);
+                }
+            }
+
+            var formulas = WorkshopFormulas.ColumnsFor(CustomTable.Key);
+
+            if (formulas.Count > 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "Formula columns",
+                    FontWeight = FontWeights.Bold,
+                    Margin = new Thickness(4, 10, 4, 2)
+                });
+
+                foreach (var formula in formulas)
+                {
+                    var column = formula;
+
+                    var line = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Margin = new Thickness(8, 1, 4, 1)
+                    };
+
+                    line.Children.Add(new TextBlock
+                    {
+                        Text = column.Name,
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+
+                    var edit = new Button
+                    {
+                        Content = "\u270E",
+                        Width = 18,
+                        Height = 18,
+                        Padding = new Thickness(0),
+                        Margin = new Thickness(6, 0, 0, 0),
+                        FontSize = 9,
+                        ToolTip = "Edit or delete this formula column:  = " + column.Text
+                    };
+                    edit.Click += (s, e) => EditCustomFormulaColumn(column);
+
+                    line.Children.Add(edit);
+                    panel.Children.Add(line);
+                }
+            }
+
+            return new Border
+            {
+                BorderBrush = Brushes.LightGray,
+                BorderThickness = new Thickness(0, 0, 1, 0),
+                Child = new ScrollViewer
+                {
+                    Content = panel,
+                    Width = 210,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+                }
+            };
+        }
+
+        // The custom table belongs to this window, so its formula columns are written
+        // and edited here rather than in a Batch Workshop edit window.
+        private void EditCustomFormulaColumn(WorkshopFormulaColumn existing)
+        {
+            var table = CustomTable.Build(_undoRedo, _currentName, _scale);
+
+            // A variable that is unticked today can be ticked tomorrow, so no column
+            // may take the name of one.
+            var reserved = CustomTable
+                .Catalog(_undoRedo, _currentName, _scale)
+                .SelectMany(g => g.Headers);
+
+            var window = new WorkshopFormulaWindow(table, existing, reserved)
+            {
+                Owner = this,
+                FontSize = FontSize,
+                FontFamily = FontFamily
+            };
+
+            if (window.ShowDialog() != true) return;
+
+            if (window.DeleteRequested)
+            {
+                WorkshopFormulas.Remove(existing);
+                BuildTabs();
+                return;
+            }
+
+            WorkshopFormulas.Save(
+                existing,
+                CustomTable.Key,
+                WorkshopFormulaWindow.KeptName(this, existing, window.ColumnName),
+                window.Result);
+
+            BuildTabs();
+        }
+
+        /// <summary>Sheet names staged for the workbook, for a project file to record.</summary>
+        public static IEnumerable<string> StagedSheetNames() => _selectedSheets.ToList();
+
+        /// <summary>Restores the staged sheets a project file recorded.</summary>
+        public static void StageSheets(IEnumerable<string> names)
+        {
+            _selectedSheets.Clear();
+            if (names == null) return;
+
+            foreach (var name in names)
+            {
+                if (!string.IsNullOrEmpty(name)) _selectedSheets.Add(name);
+            }
+        }
+
+        private static bool IsInWorkbook(string sheetName) => _selectedSheets.Contains(sheetName);
+
+        private static string WorkbookButtonLabel(bool added) =>
+            added ? "\u2713 Added to workbook" : "Add to workbook";
+
+        private static TextBlock SpecimenHeader(string name) => new TextBlock
+        {
+            Text = name,
+            FontWeight = FontWeights.Bold,
+            Margin = new Thickness(8, 12, 8, 4)
+        };
+
+        // Shared grid style: read-only cells (the Attempt column overrides this),
+        // no add/delete/sort/reorder, own scrolling off (the tab's ScrollViewer handles it).
+        private static DataGrid MakeGrid()
+        {
+            var grid = new DataGrid
+            {
+                AutoGenerateColumns = false,
+                IsReadOnly = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false,
+                CanUserReorderColumns = false,
+                CanUserSortColumns = false,
+                HeadersVisibility = DataGridHeadersVisibility.Column,
+                GridLinesVisibility = DataGridGridLinesVisibility.All,
+                ColumnWidth = new DataGridLength(1, DataGridLengthUnitType.Auto),
+                Margin = new Thickness(8, 0, 8, 12)
+            };
+            ScrollViewer.SetVerticalScrollBarVisibility(grid, ScrollBarVisibility.Disabled);
+            return grid;
+        }
+
+        // Read-only column bound to one cell of the row array.
+        private static void AddColumn(DataGrid grid, string header, string path, double? fixedWidth = null)
+        {
+            grid.Columns.Add(new DataGridTextColumn
+            {
+                Header = header,
+                Binding = new Binding(path),
+                IsReadOnly = true,
+                Width = fixedWidth.HasValue
+                    ? new DataGridLength(fixedWidth.Value)
+                    : new DataGridLength(1, DataGridLengthUnitType.Auto)
+            });
+        }
+
+        // Editable header for the Attempt column: a borderless TextBox two-way bound
+        // to the tab's shared AttemptHeader, so typing relabels the column live.
+        private static TextBox MakeAttemptHeaderBox(AttemptHeader model)
+        {
+            var box = new TextBox
+            {
+                MinWidth = 54,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                FontWeight = FontWeights.Bold,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "Edit this column title (affects this window only)",
+                DataContext = model
+            };
+            box.SetBinding(TextBox.TextProperty, new Binding(nameof(AttemptHeader.Text))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+            return box;
+        }
+
+        // The Attempt column is user-editable (unlike AddColumn's read-only ones) so
+        // attempt numbers can be relabeled; commits on LostFocus to avoid re-rendering
+        // mid-edit.
+        private static void AddAttemptColumn(DataGrid grid, TextBox headerBox, string path, double fixedWidth)
+        {
+            grid.Columns.Add(new DataGridTextColumn
+            {
+                Header = headerBox,
+                Binding = new Binding(path)
+                {
+                    Mode = BindingMode.TwoWay,
+                    UpdateSourceTrigger = UpdateSourceTrigger.LostFocus
+                },
+                IsReadOnly = false,
+                Width = new DataGridLength(fixedWidth)
+            });
+        }
+
+        #endregion
+
+        #region Workbook footer and CSV export
+
+        private FrameworkElement BuildWorkbookFooter()
+        {
+            _workbookStatus = new TextBlock
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0)
+            };
+
+            _exportWorkbookButton = new Button
+            {
+                Content = "Export workbook…",
+                Padding = new Thickness(12, 4, 12, 4)
+            };
+            _exportWorkbookButton.Click += (s, e) => ExportWorkbook();
+
+            var bar = new DockPanel { Margin = new Thickness(8, 6, 8, 6) };
+            DockPanel.SetDock(_exportWorkbookButton, Dock.Right);
+            bar.Children.Add(_exportWorkbookButton);
+            bar.Children.Add(_workbookStatus);
+
+            return new Border
+            {
+                BorderBrush = Brushes.LightGray,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Child = bar
+            };
+        }
+
+        private void UpdateWorkbookStatus()
+        {
+            int n = _selectedSheets.Count;
+            _workbookStatus.Text = n == 0
+                ? "No tables added to workbook"
+                : n == 1 ? "1 table added to workbook"
+                         : $"{n} tables added to workbook";
+            _exportWorkbookButton.IsEnabled = n > 0;
+        }
+
+        // Writes one tab's already-formatted rows to a CSV file (UTF-8 with BOM so
+        // Excel reads non-ASCII units correctly).
+        private static void ExportCsv(string[] headers, List<string[]> rows, string suggestedFileName)
+        {
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export Table to CSV",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                DefaultExt = ".csv",
+                FileName = suggestedFileName,
+                AddExtension = true
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Join(",", headers.Select(CsvEscape)));
+            foreach (var row in rows)
+                sb.AppendLine(string.Join(",", row.Select(CsvEscape)));
+
+            try
+            {
+                File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not save the file:\n{ex.Message}", "Export failed",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        // Quotes a field only if it contains a delimiter/quote/newline; embedded
+        // quotes are doubled per the CSV convention.
+        private static string CsvEscape(string field)
+        {
+            field ??= "";
+            if (field.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0)
+                return "\"" + field.Replace("\"", "\"\"") + "\"";
+            return field;
+        }
+
+        private void ExportWorkbook()
+        {
+            var sheets = StagedSheets(_undoRedo, _currentName, _scale);
+            if (sheets.Count == 0) return;
+
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export workbook",
+                Filter = "Excel workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+                DefaultExt = ".xlsx",
+                FileName = "history_workbook.xlsx",
+                AddExtension = true
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                WriteXlsx(dlg.FileName, sheets);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not save the workbook:\n{ex.Message}", "Export failed",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        #endregion
+
+        #region Workbook entry points
+
+        /// <summary>Unstages every sheet. The selection outlives any one window, so
+        /// a session reset has to say so explicitly.</summary>
+        public static void ClearStagedSheets() => _selectedSheets.Clear();
+
+        public static void ExportAllOperationHistory(
+            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+        {
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export operation history",
+                Filter = "Excel workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+                DefaultExt = ".xlsx",
+                FileName = "operation_history.xlsx",
+                AddExtension = true
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                WriteXlsx(dlg.FileName, BuildAllSheets(ur, currentName, scale));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not save the workbook:\n{ex.Message}", "Export failed",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// Writes the Batch Workshop's All Geometric Data workbook: the sheets staged
+        /// in the History window, or every sheet when none have been staged.
+        public static void ExportAllGeometricData(
+            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+        {
+            var sheets = _selectedSheets.Count > 0
+                ? StagedSheets(ur, currentName, scale)
+                : BuildAllSheets(ur, currentName, scale);
+
+            if (sheets.Count == 0) return;
+
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export All Geometric Data",
+                Filter = "Excel workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
+                DefaultExt = ".xlsx",
+                FileName = "all_geometric_data.xlsx",
+                AddExtension = true
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                WriteXlsx(dlg.FileName, sheets);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not save the workbook:\n{ex.Message}", "Export failed",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        // Staged sheets, rebuilt from live history rather than from the rows captured
+        // when the tabs were drawn, so a workbook exported after an edit is current.
+        private static List<WorkbookSheet> StagedSheets(
+            UndoRedoManager ur, string currentName, ScaleCalibration scale) =>
+            BuildAllSheets(ur, currentName, scale)
+                .Where(s => _selectedSheets.Contains(s.Name))
+                .ToList();
+
+        // One sheet per tab, in tab order.
+        private static List<WorkbookSheet> BuildAllSheets(
+            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+        {
+            var sheets = new List<WorkbookSheet>();
+
+            foreach (var spec in Tabs)
+            {
+                var (headers, rows) = BuildTable(spec, ur, currentName, scale).ToCsv();
+                sheets.Add(new WorkbookSheet { Name = spec.Name, Headers = headers, Rows = rows });
+            }
+
+            if (CustomTableSelection.HasColumns || _selectedSheets.Contains(CustomTable.Key))
+            {
+                var (headers, rows) = CustomTable.Build(ur, currentName, scale).ToCsv();
+                sheets.Add(new WorkbookSheet { Name = CustomTable.Key, Headers = headers, Rows = rows });
+            }
+
+            return sheets;
+        }
+
+        #endregion
+
+        #region Workshop sidebar exports
+
+        /// Every specimen's operations in order: the archived records followed by the
+        /// live history. Exposed so other exporters walk history the same way.
+        public static IEnumerable<(string Name, IReadOnlyList<WorkOperation> Ops)> SpecimenBlocks(
+            UndoRedoManager ur, string currentName) => Blocks(ur, currentName);
+
+        /// <summary>Writes one Batch Workshop category's wide table to a CSV.</summary>
+        public static void ExportWorkshopCsv(
+            WorkshopCategory category, UndoRedoManager ur, string currentName, ScaleCalibration scale)
+        {
+            var table = WorkshopTables.Build(category, ur, currentName, scale);
+
+            if (table.IsEmpty) return;
+
+            // Hidden columns are already dropped by ToCsv; group columns are included.
+            var (headers, rows) = table.ToCsv();
+            ExportCsv(headers, rows, WorkshopTables.FileNameFor(category));
+        }
+
+        #endregion
+
+        #region Minimal XLSX writer (OOXML, no external dependency)
+
+        // Hand-builds a minimal .xlsx: a workbook part, one worksheet part per sheet,
+        // and a bare styles part (Excel requires styles.xml even when unstyled).
+        private static void WriteXlsx(string path, List<WorkbookSheet> sheets)
+        {
+            const string nsMain = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            const string ctWorkbook = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+            const string ctWorksheet = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
+            const string ctStyles = "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml";
+            const string relOfficeDoc = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+            const string relWorksheet = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+            const string relStyles = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
+
+            using var pkg = Package.Open(path, FileMode.Create);
+
+            var wbUri = new Uri("/xl/workbook.xml", UriKind.Relative);
+            var wbPart = pkg.CreatePart(wbUri, ctWorkbook);
+            pkg.CreateRelationship(wbUri, TargetMode.Internal, relOfficeDoc, "rId1");
+
+            var stylesUri = new Uri("/xl/styles.xml", UriKind.Relative);
+            var stylesPart = pkg.CreatePart(stylesUri, ctStyles);
+            WritePartText(stylesPart, StylesXml());
+            wbPart.CreateRelationship(stylesUri, TargetMode.Internal, relStyles, "rIdStyles");
+
+            // One worksheet part per sheet, related back to the workbook by rId.
+            for (int i = 1; i <= sheets.Count; i++)
+            {
+                var sheetUri = new Uri($"/xl/worksheets/sheet{i}.xml", UriKind.Relative);
+                var sheetPart = pkg.CreatePart(sheetUri, ctWorksheet);
+                WritePartText(sheetPart, BuildSheetXml(sheets[i - 1]));
+                wbPart.CreateRelationship(sheetUri, TargetMode.Internal, relWorksheet, $"rId{i}");
+            }
+
+            // workbook.xml: the <sheets> list Excel uses to find and name each tab.
+            var wb = new StringBuilder();
+            wb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+            wb.Append($"<workbook xmlns=\"{nsMain}\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets>");
+            for (int i = 1; i <= sheets.Count; i++)
+                wb.Append($"<sheet name=\"{XmlEscape(SafeSheetName(sheets[i - 1].Name, i))}\" sheetId=\"{i}\" r:id=\"rId{i}\"/>");
+            wb.Append("</sheets></workbook>");
+            WritePartText(wbPart, wb.ToString());
+        }
+
+        private static void WritePartText(PackagePart part, string content)
+        {
+            using var stream = part.GetStream(FileMode.Create, FileAccess.Write);
+            using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+            writer.Write(content);
+        }
+
+        // Smallest styles.xml Excel accepts: one default font/fill/border/format,
+        // nothing actually styled.
+        private static string StylesXml() =>
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+            "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+            "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>" +
+            "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills>" +
+            "<borders count=\"1\"><border/></borders>" +
+            "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
+            "<cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/></cellXfs>" +
+            "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
+            "</styleSheet>";
+
+        // One <row> per data row (header row first); the cell reference (A1, B1, …)
+        // comes from column position via ColumnLetter.
+        private static string BuildSheetXml(WorkbookSheet sheet)
+        {
+            var sb = new StringBuilder();
+            sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+            sb.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
+
+            sb.Append("<row r=\"1\">");
+            for (int c = 0; c < sheet.Headers.Length; c++)
+                sb.Append(InlineStringCell($"{ColumnLetter(c)}1", sheet.Headers[c]));
+            sb.Append("</row>");
+
+            int rowNum = 2;
+            foreach (var row in sheet.Rows)
+            {
+                sb.Append($"<row r=\"{rowNum}\">");
+                for (int c = 0; c < row.Length; c++)
+                    sb.Append(Cell($"{ColumnLetter(c)}{rowNum}", row[c]));
+                sb.Append("</row>");
+                rowNum++;
+            }
+
+            sb.Append("</sheetData></worksheet>");
+            return sb.ToString();
+        }
+
+        // Numeric cells (<v>) when the value parses as a number, so Excel treats it
+        // as a number (sortable, usable in formulas); otherwise an inline string.
+        private static string Cell(string reference, string value)
+        {
+            if (!string.IsNullOrEmpty(value) &&
+                double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+                return $"<c r=\"{reference}\"><v>{value}</v></c>";
+            return InlineStringCell(reference, value);
+        }
+
+        private static string InlineStringCell(string reference, string value) =>
+            $"<c r=\"{reference}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{XmlEscape(value)}</t></is></c>";
+
+        // 0-based index -> spreadsheet column letters (0->A, 25->Z, 26->AA):
+        // bijective base-26, no zero digit.
+        private static string ColumnLetter(int index)
+        {
+            string s = "";
+            index++;
+            while (index > 0)
+            {
+                int rem = (index - 1) % 26;
+                s = (char)('A' + rem) + s;
+                index = (index - 1) / 26;
+            }
+            return s;
+        }
+
+        private static string XmlEscape(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("&", "&amp;")
+                    .Replace("<", "&lt;")
+                    .Replace(">", "&gt;")
+                    .Replace("\"", "&quot;");
+        }
+
+        // Excel sheet-name rules: no : \ / ? * [ ], max 31 chars, non-empty.
+        // Falls back to "Sheet{ordinal}" when blank (or blank after stripping).
+        private static string SafeSheetName(string name, int ordinal)
+        {
+            if (string.IsNullOrWhiteSpace(name)) name = $"Sheet{ordinal}";
+            foreach (char bad in new[] { ':', '\\', '/', '?', '*', '[', ']' })
+                name = name.Replace(bad, ' ');
+            name = name.Trim();
+            if (name.Length > 31) name = name.Substring(0, 31);
+            if (name.Length == 0) name = $"Sheet{ordinal}";
+            return name;
+        }
+
+        #endregion
+
+        #region Formatting helpers
+
+        internal static string Fmt(double v) =>
+            Math.Round(v, 2).ToString(CultureInfo.InvariantCulture);
+
+        internal static string Fmt4(double v) =>
+            Math.Round(v, 4).ToString(CultureInfo.InvariantCulture);
+
+        // LineLengthRatio is boxed as a double or "N/A"; handle both.
+        internal static string FmtRatio(object ratio) =>
+            ratio is double d ? Fmt(d) : ratio?.ToString() ?? "";
+
+        // Real-world units when calibrated, else raw image pixels so the cell is
+        // never blank. The input is in image pixels, the unit every stored
+        // measurement uses, so the number does not depend on the window size at the
+        // moment of export.
+        internal static string FmtLength(double imagePixels, ScaleCalibration scale) =>
+            scale != null && scale.IsCalibrated
+                ? $"{scale.ToUnitsFromImage(imagePixels):F2} {scale.Unit}"
+                : $"{Math.Round(imagePixels, 1).ToString(CultureInfo.InvariantCulture)} px";
+
+        internal static string FmtArea(double imagePixelArea, ScaleCalibration scale) =>
+            scale != null && scale.IsCalibrated
+                ? $"{scale.ToUnitsAreaFromImage(imagePixelArea):F2} {scale.Unit}\u00B2"
+                : $"{Math.Round(imagePixelArea, 1).ToString(CultureInfo.InvariantCulture)} px\u00B2";
+
+        #endregion
+    }
+}

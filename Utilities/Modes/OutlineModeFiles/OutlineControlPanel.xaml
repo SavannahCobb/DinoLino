@@ -1,0 +1,399 @@
+<UserControl x:Class="DinoLino.Utilities.Modes.OutlineControlPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:DinoLino.Utilities.Modes">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:IntEqualityConverter x:Key="EqualityConverter"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+    </UserControl.Resources>
+
+    <StackPanel Margin="10,10,10,0">
+
+        <!-- Draw Outline tool -->
+        <RadioButton Content="Automated Outline"
+                     GroupName="OutlineTool"
+                     IsChecked="{Binding DrawOutlineMode, Mode=TwoWay}"
+                     MinHeight="26"/>
+
+        <StackPanel Visibility="{Binding DrawOutlineMode, Converter={StaticResource BoolToVis}}">
+            <CheckBox Content="Use Watershed"
+                  IsChecked="{Binding UseWatershed, Mode=TwoWay}"
+                  Margin="0,6,0,0"
+                  ToolTip="More accurate boundaries on complex images, slightly slower"/>
+
+            <CheckBox Content="Multi-Click"
+                IsChecked="{Binding MultiClickOutline, Mode=TwoWay}"
+                Margin="0,6,0,0"
+                ToolTip="First click shows a candidate outline. Click inside to confirm, or outside to expand."/>
+
+            <StackPanel Visibility="{Binding UseWatershed, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Boundary Sensitivity:" FontWeight="Bold" Margin="0,8,0,0"/>
+                <TextBlock TextWrapping="Wrap" Foreground="Gray"
+                     Text="Pre-blur reduces noise. Lower sensitivity follows broader boundaries."
+                     Margin="0,0,0,4"/>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="Off"
+                         GroupName="WatershedBlur"
+                         IsChecked="{Binding WatershedBlurLevel,
+                             Converter={StaticResource EqualityConverter},
+                             ConverterParameter=0, Mode=TwoWay}"
+                         Margin="0,0,8,0"/>
+                    <RadioButton Content="Low"
+                         GroupName="WatershedBlur"
+                         IsChecked="{Binding WatershedBlurLevel,
+                             Converter={StaticResource EqualityConverter},
+                             ConverterParameter=1, Mode=TwoWay}"
+                         Margin="0,0,8,0"/>
+                    <RadioButton Content="High"
+                         GroupName="WatershedBlur"
+                         IsChecked="{Binding WatershedBlurLevel,
+                             Converter={StaticResource EqualityConverter},
+                             ConverterParameter=2, Mode=TwoWay}"/>
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Visibility="{Binding UseWatershed, Converter={StaticResource InverseBoolToVis}}">
+                <TextBlock Text="Fill Sensitivity:" FontWeight="Bold" Margin="0,8,0,0"/>
+                <TextBlock TextWrapping="Wrap" Foreground="Gray"
+                     Text="How aggressively the fill expands from the clicked point."
+                     Margin="0,0,0,2"/>
+                <Slider Minimum="5" Maximum="150" Value="{Binding FillSensitivity}"
+                  TickFrequency="5" IsSnapToTickEnabled="True" Margin="0,2,0,2"/>
+                <TextBlock>
+                    <TextBlock.Text>
+                        <Binding Path="FillSensitivity" StringFormat="{}Value: {0:F0}"/>
+                    </TextBlock.Text>
+                </TextBlock>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Draw by Hand tool -->
+        <RadioButton Content="Draw by Hand"
+             GroupName="OutlineTool"
+             IsChecked="{Binding HandDrawMode, Mode=TwoWay}"
+             MinHeight="26"
+             Margin="0,8,0,0"
+             ToolTip="Hold and drag to draw an outline freehand. It closes when the stroke crosses itself. Leftover tails are removed."/>
+
+        <StackPanel Visibility="{Binding HandDrawMode, Converter={StaticResource BoolToVis}}">
+            <TextBlock TextWrapping="Wrap" Foreground="Gray"
+               Text="Hold the left button and drag to draw. The outline closes automatically when your stroke crosses itself."
+               Margin="0,6,0,4"/>
+        </StackPanel>
+
+        <!-- Edit Outline is a top-level tool choice. Its edit subtools are shown only
+     while it is selected. -->
+        <RadioButton x:Name="EditOutlineRadio"
+             Content="Edit Outline"
+             GroupName="OutlineTool"
+             IsChecked="{Binding EditOutlineMode, Mode=TwoWay}"
+             MinHeight="26" Margin="0,8,0,0"
+             ToolTip="Choose an outline-editing tool: Erase, Push, or Smooth."/>
+
+        <!-- The selected Edit Outline radio button reveals the nested tool choices.
+     A separate GroupName keeps a selected subtool from unchecking Edit Outline. -->
+        <StackPanel Margin="18,0,0,0"
+            Visibility="{Binding IsChecked,
+                                 ElementName=EditOutlineRadio,
+                                 Converter={StaticResource BoolToVis}}">
+
+            <!-- Erase Outline -->
+            <RadioButton Content="Erase"
+                 GroupName="OutlineEditTool"
+                 IsChecked="{Binding EraseOutlineMode, Mode=TwoWay}"
+                 MinHeight="26"
+                 Margin="0,6,0,0"
+                 ToolTip="Click and drag over the outline to erase it."/>
+
+            <StackPanel Visibility="{Binding EraseOutlineMode,
+                                     Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Erase Brush Size:"
+                   FontWeight="Bold"
+                   Margin="0,8,0,0"/>
+
+                <Slider Minimum="5"
+                Maximum="100"
+                Value="{Binding Erase.BrushRadius, Mode=TwoWay}"
+                TickFrequency="5"
+                IsSnapToTickEnabled="True"
+                Margin="0,2,0,2"/>
+
+                <TextBlock Text="{Binding Erase.BrushRadius, StringFormat={}{0:F0} px}"
+                   Foreground="Gray"
+                   Margin="0,0,0,4"/>
+            </StackPanel>
+
+            <!-- Push Outline -->
+            <RadioButton Content="Push"
+                 GroupName="OutlineEditTool"
+                 IsChecked="{Binding PushOutlineMode, Mode=TwoWay}"
+                 MinHeight="26"
+                 Margin="0,8,0,0"
+                 ToolTip="Click and drag from inside the outline outward to expand it — or hold Ctrl and move the cursor."/>
+
+            <StackPanel Visibility="{Binding PushOutlineMode,
+                                     Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Push Brush Size:"
+                   FontWeight="Bold"
+                   Margin="0,8,0,0"/>
+
+                <Slider Minimum="5"
+                Maximum="100"
+                Value="{Binding Push.BrushRadius, Mode=TwoWay}"
+                TickFrequency="5"
+                IsSnapToTickEnabled="True"
+                Margin="0,2,0,2"/>
+
+                <TextBlock Text="{Binding Push.BrushRadius, StringFormat={}{0:F0} px}"
+                   Foreground="Gray"
+                   Margin="0,0,0,4"/>
+            </StackPanel>
+
+            <!-- Smooth Outline -->
+            <RadioButton Content="Smooth"
+                 GroupName="OutlineEditTool"
+                 IsChecked="{Binding SmoothOutlineMode, Mode=TwoWay}"
+                 MinHeight="26"
+                 Margin="0,8,0,0"
+                 ToolTip="Smooth the entire outline or locally smooth one section."/>
+
+            <StackPanel Visibility="{Binding SmoothOutlineMode,
+                                     Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Scope:"
+                   FontWeight="Bold"
+                   Margin="0,8,0,0"/>
+
+                <StackPanel Orientation="Horizontal"
+                    Margin="0,2,0,0">
+                    <RadioButton Content="Global"
+                         GroupName="SmoothScope"
+                         IsChecked="{Binding Smooth.IsGlobalScope, Mode=TwoWay}"
+                         Margin="0,0,10,0"
+                         ToolTip="The slider smooths the entire outline live."/>
+
+                    <RadioButton Content="Local"
+                         GroupName="SmoothScope"
+                         IsChecked="{Binding Smooth.IsLocalScope, Mode=TwoWay}"
+                         ToolTip="The cursor becomes a sanding brush. Click and drag along the outline to smooth one section."/>
+                </StackPanel>
+
+                <TextBlock Text="Smooth Strength:"
+                   FontWeight="Bold"
+                   Margin="0,8,0,0"/>
+
+                <Slider Minimum="0"
+                Maximum="20"
+                Value="{Binding Smooth.Strength, Mode=TwoWay}"
+                TickFrequency="1"
+                IsSnapToTickEnabled="True"
+                Margin="0,2,0,2"/>
+
+                <TextBlock Text="{Binding Smooth.Strength, StringFormat={}{0:F0} passes}"
+                   Foreground="Gray"
+                   Margin="0,0,0,4"/>
+
+                <StackPanel Visibility="{Binding Smooth.IsLocalScope,
+                                         Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Brush Size:"
+                       FontWeight="Bold"
+                       Margin="0,4,0,0"/>
+
+                    <Slider Minimum="5"
+                    Maximum="100"
+                    Value="{Binding Smooth.BrushRadius, Mode=TwoWay}"
+                    TickFrequency="5"
+                    IsSnapToTickEnabled="True"
+                    Margin="0,2,0,2"/>
+
+                    <TextBlock Text="{Binding Smooth.BrushRadius, StringFormat={}{0:F0} px}"
+                       Foreground="Gray"
+                       Margin="0,0,0,4"/>
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Generate Metadata.
+             The Checked/Unchecked handlers trigger GenerateMetadata /
+             ClearEFDPreview — the OutlineMetadataMode SETTER no longer runs
+             work as a side effect of the two-way binding.
+             The Preview handlers veto selection while a hand-drawn stroke is
+             still open: WPF unchecks the rest of the radio group (destroying
+             the stroke via the hand-draw binding) BEFORE raising Checked, so
+             a veto inside Checked can never fire — it must intercept the
+             input before any group state changes. -->
+        <RadioButton Content="Generate Metadata"
+             x:Name="MetadataRadio"
+             GroupName="OutlineTool"
+             IsChecked="{Binding OutlineMetadataMode, Mode=TwoWay}"
+             Checked="MetadataRadio_Checked"
+             Unchecked="MetadataRadio_Unchecked"
+             PreviewMouseLeftButtonDown="MetadataRadio_PreviewMouseDown"
+             PreviewKeyDown="MetadataRadio_PreviewKeyDown"
+             MinHeight="26"
+             Margin="0,8,0,0"/>
+
+        <StackPanel Visibility="{Binding OutlineMetadataMode, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Measurement Resolution:" FontWeight="Bold" Margin="0,0,0,2"/>
+            <TextBlock TextWrapping="Wrap" Foreground="Gray"
+           Text="The outline is resampled to evenly spaced vertices before the metrics below are computed."
+           Margin="0,0,0,4"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4"
+            Visibility="{Binding IsScaleCalibrated, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Spacing:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox Width="60" VerticalContentAlignment="Center"
+             Text="{Binding ResampleSpacingUnits, Mode=TwoWay,
+                            UpdateSourceTrigger=LostFocus, StringFormat={}{0:F3}}"
+             ToolTip="Distance between resampled vertices, in the calibrated unit"/>
+                <TextBlock Text="{Binding ScaleUnit}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+            </StackPanel>
+
+            <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,4"
+           Text="Uncalibrated: a fixed vertex count is used. Set a scale to fix the physical spacing instead."
+           Visibility="{Binding IsScaleCalibrated, Converter={StaticResource InverseBoolToVis}}"/>
+
+            <TextBlock Text="{Binding MeasurementSpacingLabel}" Foreground="Gray" Margin="0,0,0,6"/>
+            <TextBlock Text="Shape Metrics:" FontWeight="Bold" Margin="0,0,0,4"/>
+
+            <!-- Compact summary rows -->
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Max Length:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock.Text>
+                        <MultiBinding StringFormat="{}{0:F2} {1}">
+                            <Binding Path="MaxLengthValue"/>
+                            <Binding Path="MeasurementUnit"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Max Width:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock.Text>
+                        <MultiBinding StringFormat="{}{0:F2} {1}">
+                            <Binding Path="MaxWidthValue"/>
+                            <Binding Path="MeasurementUnit"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Aspect Ratio (bbox):" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" Text="{Binding AspectRatioResult, StringFormat={}{0:F3}}" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Area:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock.Text>
+                        <MultiBinding StringFormat="{}{0:F2} {1}&#178;">
+                            <Binding Path="AreaScaledValue"/>
+                            <Binding Path="MeasurementUnit"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Perimeter:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock.Text>
+                        <MultiBinding StringFormat="{}{0:F2} {1}">
+                            <Binding Path="PerimeterScaledValue"/>
+                            <Binding Path="MeasurementUnit"/>
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Circularity:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" Text="{Binding CircularityResult, StringFormat={}{0:F4}}" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Solidity:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" Text="{Binding SolidityResult, StringFormat={}{0:F4}}" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Convexity:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" Text="{Binding ConvexityResult, StringFormat={}{0:F4}}" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <Grid Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Turn. Angles / Length:" Foreground="Gray"/>
+                <TextBlock Grid.Column="1" Text="{Binding TurningAngleLengthResult, StringFormat={}{0:F4}}" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <!-- EFD Harmonics and Contour Points moved into the Elliptic
+                 Fourier Analysis window (button below) so every EFA control,
+                 plot, and readout lives in one place. -->
+
+            <!-- normalization caveat: only visible when set -->
+            <TextBlock Text="{Binding NormalizationWarning}"
+                       Foreground="#C0392B" TextWrapping="Wrap"
+                       Margin="0,6,0,0"
+                       Visibility="{Binding HasNormalizationWarning, Converter={StaticResource BoolToVis}}"/>
+
+            <!-- EFD detail link -->
+            <Button Content="Elliptic Fourier Analysis"
+            HorizontalAlignment="Left"
+            Background="Transparent"
+            BorderThickness="0"
+            Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"
+            Cursor="Hand"
+            Padding="0"
+            Click="ShowEFDDetails_Click"/>
+
+            <!-- Keeps this outline as a silhouette. Only stored outlines are written
+                 by Batch Workshop ▸ Export 2D Outlines. -->
+            <TextBlock Margin="0,6,0,0">
+                <Hyperlink Click="CommitOutline_Click"
+                           ToolTip="Store this outline as a silhouette so it can be exported later">
+                    Commit Outline to History
+                </Hyperlink>
+            </TextBlock>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

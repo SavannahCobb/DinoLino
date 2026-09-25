@@ -20,7 +20,7 @@
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -30,7 +30,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -38,9 +38,14 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>
+    </ApplicationIcon>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Data" />
+    <Reference Include="System.Speech" />
     <Reference Include="System.Xml" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Core" />
@@ -59,65 +64,134 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="CurvatureControlPanel.xaml.cs">
+    <Compile Include="MainWindow.Navigation.cs" />
+    <Compile Include="Utilities\Batch Workshop\CustomTable.cs" />
+    <Compile Include="Utilities\Batch Workshop\FormulaEngine.cs" />
+    <Compile Include="Utilities\Batch Workshop\MainWindow.Workshop.cs" />
+    <Compile Include="Utilities\Batch Workshop\WorkshopFormulas.cs" />
+    <Compile Include="Utilities\Batch Workshop\WorkshopFormulaWindow.cs" />
+    <Compile Include="Utilities\Batch Workshop\WorkshopTables.cs" />
+    <Compile Include="Utilities\Directory\MainWindow.Plot.cs" />
+    <Compile Include="Utilities\Directory\MainWindow.Directory.cs" />
+    <Compile Include="Utilities\Directory\Plot.Exporter.cs" />
+    <Compile Include="Utilities\Directory\PlotAdvancedWindow.cs" />
+    <Compile Include="Utilities\Image Calibration\AlignWindow.xaml.cs">
+      <DependentUpon>AlignWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Utilities\Image Calibration\ImageAlignment.cs" />
+    <Compile Include="Utilities\MainWindow.Import.cs" />
+    <Compile Include="Utilities\Project\AutoSave.cs" />
+    <Compile Include="Utilities\Project\OperationRedraw.cs" />
+    <Compile Include="Utilities\Project\ProjectFile.cs" />
+    <Compile Include="Utilities\Project\ProjectSession.cs" />
+    <Compile Include="Utilities\Project\MainWindow.Project.cs" />
+    <Compile Include="Utilities\MainWindow.Settings.cs" />
+    <Compile Include="Utilities\Modes\CurvatureModeFiles\CurvatureControlPanel.xaml.cs">
       <DependentUpon>CurvatureControlPanel.xaml</DependentUpon>
     </Compile>
     <Compile Include="DataTypes\DataTypes.cs" />
-    <Compile Include="DownSampleWindow.xaml.cs">
+    <Compile Include="Utilities\ImageAdjustments\DownSampleWindow.xaml.cs">
       <DependentUpon>DownSampleWindow.xaml</DependentUpon>
     </Compile>
-    <Compile Include="DrawControlPanel.xaml.cs">
+    <Compile Include="Utilities\Modes\DrawModeFiles\DrawControlPanel.xaml.cs">
       <DependentUpon>DrawControlPanel.xaml</DependentUpon>
     </Compile>
-    <Compile Include="FontWindow.xaml.cs">
+    <Compile Include="Utilities\ImageAdjustments\LineOptionsWindow.cs" />
+    <Compile Include="Utilities\ImageAdjustments\FontWindow.xaml.cs">
       <DependentUpon>FontWindow.xaml</DependentUpon>
     </Compile>
-    <Compile Include="MultivariateStatistics.cs" />
-    <Compile Include="PictureAdjustmentWindow.xaml.cs">
+    <Compile Include="MainWindow.AttemptCounter.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MainWindow.Input.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MainWindow.Menus.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MainWindow.Model3D.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MainWindow.Workspace.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Utilities\3DDataProcessing\MeshLoader.cs" />
+    <Compile Include="Utilities\3DDataProcessing\MeshSimplifier.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\BrushEditTools.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\HandDrawTool.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\ClickSegmentation.cs" />
+    <Compile Include="Utilities\3DDataProcessing\ModelPoseController.cs" />
+    <Compile Include="Utilities\3DDataProcessing\ObjLoader.cs" />
+    <Compile Include="Utilities\ImageAdjustments\PictureAdjustmentWindow.xaml.cs">
       <DependentUpon>PictureAdjustmentWindow.xaml</DependentUpon>
     </Compile>
-    <Compile Include="TriangleControlPanel.xaml.cs">
-      <DependentUpon>TriangleControlPanel.xaml</DependentUpon>
+    <Compile Include="Utilities\3DDataProcessing\PlyLoader.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\Silhouettes\CommittedOutlineStore.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\Silhouettes\OutlineExportDialogs.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\Silhouettes\OutlineGalleryWindow.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\Silhouettes\OutlineShapeExporter.cs" />
+    <Compile Include="Utilities\Morphometrics\PCA.Math.cs" />
+    <Compile Include="Utilities\Image Calibration\ScaleWindow.xaml.cs">
+      <DependentUpon>ScaleWindow.xaml</DependentUpon>
     </Compile>
-    <Compile Include="UserGuide.xaml.cs">
+    <Compile Include="Utilities\3DDataProcessing\StlLoader.cs" />
+    <Compile Include="Utilities\Modes\GetAngleModeFiles\GetAngleControlPanel.xaml.cs">
+      <DependentUpon>GetAngleControlPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Utilities\HelpMenuFiles\UserGuide.xaml.cs">
       <DependentUpon>UserGuide.xaml</DependentUpon>
     </Compile>
     <Compile Include="Utilities\CanvasUtils.cs" />
-    <Compile Include="Utilities\EfsCsvCollector.cs" />
-    <Compile Include="Utilities\EllipticFourierAnalysis.cs" />
-    <Compile Include="Utilities\GeometryCalculations.cs" />
-    <Compile Include="Utilities\ImageAdjuster.cs" />
-    <Compile Include="Utilities\Modes\DrawMode.cs" />
-    <Compile Include="Utilities\Modes\GetAngleMode.cs" />
-    <Compile Include="Utilities\Modes\CurvatureMode.cs" />
-    <Compile Include="Utilities\Modes\OutlineMode.cs" />
+    <Compile Include="Utilities\Morphometrics\EfsCsvCollector.cs" />
+    <Compile Include="Utilities\Morphometrics\EllipticFourierAnalysis.cs" />
+    <Compile Include="Utilities\Morphometrics\Ellipticfourierpower.cs" />
+    <Compile Include="Utilities\Geometry\GeometryCalculations.cs" />
+    <Compile Include="Utilities\HistoryFiles\GeomOpHistoryWindow.cs" />
+    <Compile Include="Utilities\ImageAdjustments\ImageAdjuster.cs" />
+    <Compile Include="Utilities\ImageAdjustments\PictureCorrections.cs" />
+    <Compile Include="Utilities\Modes\DrawModeFiles\DrawMode.cs" />
+    <Compile Include="Utilities\Modes\GetAngleModeFiles\GetAngleMode.cs" />
+    <Compile Include="Utilities\Modes\CurvatureModeFiles\CurvatureMode.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\OutlineMetadataFormatter.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\OutlineMode.cs" />
+    <Compile Include="Utilities\Geometry\ViewTransform.cs" />
+    <Compile Include="Utilities\Geometry\PolylineGeometry.cs" />
+    <Compile Include="Utilities\Modes\OutlineModeFiles\SmoothTool.cs" />
     <Compile Include="Utilities\Modes\WorkMode.cs" />
-    <Compile Include="OutlineControlPanel.xaml.cs">
+    <Compile Include="Utilities\Modes\OutlineModeFiles\OutlineControlPanel.xaml.cs">
       <DependentUpon>OutlineControlPanel.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Utilities\OutlineProcessor.cs" />
-    <Compile Include="Utilities\SpecimenManager.cs" />
-    <Compile Include="Utilities\Stats.cs" />
-    <Compile Include="About.xaml.cs">
+    <Compile Include="Utilities\Modes\OutlineModeFiles\OutlineProcessor.cs" />
+    <Compile Include="Utilities\Image Calibration\ScaleCalibration.cs" />
+    <Compile Include="Utilities\HistoryFiles\SpecimenManager.cs" />
+    <Compile Include="Utilities\Geometry\SplineFitting.cs" />
+    <Compile Include="Utilities\HelpMenuFiles\About.xaml.cs">
       <DependentUpon>About.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Utilities\Operations.cs" />
-    <Compile Include="Utilities\UndoRedoManager.cs" />
-    <Page Include="CurvatureControlPanel.xaml">
+    <Compile Include="Utilities\Modes\Operations.cs" />
+    <Compile Include="Utilities\HistoryFiles\UndoRedoManager.cs" />
+    <Compile Include="Utilities\Batch Workshop\WorkshopEditWindow.cs" />
+    <Compile Include="Utilities\PopUpChrome.cs" />
+    <Compile Include="Utilities\UserSettings.cs" />
+    <Page Include="Utilities\Image Calibration\AlignWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Utilities\Modes\CurvatureModeFiles\CurvatureControlPanel.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Dictionary1.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="DownSampleWindow.xaml">
+    <Page Include="Utilities\ImageAdjustments\DownSampleWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="DrawControlPanel.xaml">
+    <Page Include="Utilities\Modes\DrawModeFiles\DrawControlPanel.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="FontWindow.xaml">
+    <Page Include="Utilities\ImageAdjustments\FontWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="MainWindow.xaml">
@@ -132,21 +206,26 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Page Include="About.xaml">
+    <Page Include="Utilities\HelpMenuFiles\About.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="PictureAdjustmentWindow.xaml">
+    <Page Include="Utilities\ImageAdjustments\PictureAdjustmentWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="TriangleControlPanel.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="UserGuide.xaml">
+    <Page Include="Utilities\Image Calibration\ScaleWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="OutlineControlPanel.xaml">
+    <Page Include="Utilities\Modes\GetAngleModeFiles\GetAngleControlPanel.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Utilities\HelpMenuFiles\UserGuide.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Utilities\Modes\OutlineModeFiles\OutlineControlPanel.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>
@@ -178,13 +257,36 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.17.1" />
+    <PackageReference Include="SharpVectors.Wpf">
+      <Version>1.8.5</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Models\**\*.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
     <Resource Include="TestImages\test.png" />
   </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
-    <Folder Include="Icons\" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="User Guide.txt">
+    <Resource Include="Icons\FullCreature.svg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
+    <EmbeddedResource Include="Icons\Icon.ico" />
+    <Resource Include="Icons\ShadedIcon.png" />
+    <EmbeddedResource Include="Icons\Title.svg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <Resource Include="Icons\Logo.svg">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\out.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
+    <Content Include="Utilities\HelpMenuFiles\User Guide.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
