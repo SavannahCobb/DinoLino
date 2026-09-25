@@ -1436,7 +1436,7 @@ namespace DinoLino.Utilities.Modes
 
         // ── Tips ── Outline-specific lines; the rest are inherited from WorkMode.
         private const string TipDecimate =
-            "💡 To increase speed, try decimating pixel count using the Decimate function in the View menu.";
+            "💡 To increase speed, try decimating pixel count using the Decimate function in the Tools menu.";
         private const string TipMultiClick =
             "💡 Use multi-click mode to merge multiple regions. To finalize an outline in multi-click mode, click inside the area bounded by a dashed line.";
         private const string TipSolidBackground =

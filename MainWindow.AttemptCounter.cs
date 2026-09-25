@@ -8,7 +8,7 @@ using ShapeConstraint = DinoLino.Utilities.Modes.DrawMode.ShapeConstraint;
 namespace DinoLino
 {
     /// <summary>
-    /// On-image operation count display, drag behavior for the counter, and the View menu toggle.
+    /// On-image operation count display, drag behavior for the counter, and the Settings menu toggle.
     /// </summary>
     public partial class MainWindow
     {

@@ -382,7 +382,7 @@ namespace DinoLino
 
         // ---- Settings ----
 
-        /// Toggles whether the View settings are kept for later sessions. The reading
+        /// Toggles whether the Settings menu choices are kept for later sessions. The reading
         /// and writing lives in MainWindow_Settings.cs, which owns SetSaveSettings.
         private void Menu_SaveSettings(object sender, RoutedEventArgs e)
         {
@@ -423,7 +423,7 @@ namespace DinoLino
         }
 
         /// Applies a font size to every part of the main window that follows the
-        /// View ▸ Font setting.
+        /// Settings ▸ Font setting.
         private void ApplyFontSize(double size)
         {
             _currentFontSize = size;

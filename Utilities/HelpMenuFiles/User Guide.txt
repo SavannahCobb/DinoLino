@@ -71,7 +71,7 @@ Open 3D model:			Ctrl + 3
 New project:			Ctrl + N
 Open project:			Ctrl + O
 Save project:			Ctrl + Shift + S
-View history: 			Ctrl + H
+Edit history:			Ctrl + H
 Export history: 		Ctrl + E
 Take screenshot: 		Ctrl + S
 Finish spline:			Enter
@@ -258,11 +258,17 @@ Note: DinoLino is currently limited to 2D morphometrics. Measurements may only b
 Import a folder of images to analyze. Incompatible file types will be ignored.
 Folders that contain several large files may take several minutes to import.
 
------ Export Operation History -----
+----- Operation History -----
+Resting on Operation History offers two things to do with what has been measured, Edit and Export.
+
+Edit Operation History:
+Opens the tables of everything measured this session, one tab per kind of operation, plus a Custom tab. Rows may be reviewed and deleted, and formula columns added. Each table can also be exported on its own as a CSV.
+
+Export Operation History:
 Export the history of all operations performed. Undone or cleared operations will not be included. The exported file will be a workbook in .xlsx format, with each operation's history on a separate sheet.
 
 ----- Save Settings -----
-Keep the current View menu settings for the next session.
+Keep the current Settings menu choices for the next session.
 
 ----- Restore Default Settings -----
 Return the View menu settings to their defaults.
@@ -316,9 +322,9 @@ Edit:
 Review all cached images and remove them one at a time, without removing associated measurements.
 
 ------------------------------------------------------------------------------------------------
-VIEW:
+SETTINGS:
 
-Adjust various properties using the View drop-down menu items.
+Adjust various properties using the Settings drop-down menu items.
 
 ----- See Tips ----- 
 Toggle on or off to see advice for using the program displayed at the bottom of the screen. Guidelines are also available in the user guide.
@@ -390,9 +396,6 @@ Principal Component Analysis (PCA): Add two or more variables, then run the anal
 
 ----- See Rex -----
 A friend to help you work.
-
------ See History ----- 
-View and export CSV tables of all operations performed.
 
 ----- Line Options ----- 
 Opens a window holding the color and the thickness every mode draws at. Both take effect as they are chosen, so the window can be left open while the change is judged against the image underneath.

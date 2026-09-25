@@ -68,7 +68,7 @@ namespace DinoLino.Utilities
     }
 
     /// <summary>
-    /// View ▸ Line Options: the color and the thickness every work mode draws at.
+    /// Settings ▸ Line Options: the color and the thickness every work mode draws at.
     /// Both take effect as they are chosen, so the window can be left open while the
     /// user looks at what a change does to the image underneath.
     /// </summary>

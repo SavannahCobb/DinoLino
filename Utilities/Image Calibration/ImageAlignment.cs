@@ -399,7 +399,7 @@ namespace DinoLino
             return true;
         }
 
-        // ---- Image axes compass (View ▸ See Image Axes) ----
+        // ---- Image axes compass (Settings ▸ See Image Axes) ----
 
         // Where the pointer and the overlay stood when the drag began, so the widget
         // follows the cursor instead of jumping its centre under it.

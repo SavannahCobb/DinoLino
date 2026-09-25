@@ -55,7 +55,7 @@ namespace DinoLino
                 UserSettings.Delete();
         }
 
-        /// Returns the View menu to how the program first opens, and forgets anything
+        /// Returns the Settings menu to how the program first opens, and forgets anything
         /// stored. The Save Settings switch is left as the user set it: with it on, the
         /// defaults are simply what gets kept from here.
         private void RestoreDefaultSettings()
@@ -165,7 +165,7 @@ namespace DinoLino
             if (UI_MenuSaveSettings.IsChecked) SaveUserSettings();
         }
 
-        /// Records what the View menu is showing at this moment.
+        /// Records what the Settings menu is showing at this moment.
         private void SaveUserSettings()
         {
             new UserSettings

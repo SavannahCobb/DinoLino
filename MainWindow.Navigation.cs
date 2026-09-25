@@ -186,7 +186,7 @@ namespace DinoLino
         // =====================
         // Mini-map visibility
         // =====================
-        // The View menu handler (Menu_SeeMiniMap) lives in MainWindow.Menus.cs
+        // The Settings menu handler (Menu_SeeMiniMap) lives in MainWindow.Menus.cs
         // with the rest of the menu handlers and calls SetMiniMapVisible below.
 
         private void MiniMapClose_Click(object sender, RoutedEventArgs e)

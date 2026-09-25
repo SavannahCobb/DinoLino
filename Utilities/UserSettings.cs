@@ -7,7 +7,7 @@ using System.Text;
 namespace DinoLino.Utilities
 {
     /// <summary>
-    /// The preferences a user sets from the View menu, and the small text file they
+    /// The preferences a user sets from the Settings menu, and the small text file they
     /// are kept in between sessions.
     /// </summary>
     /// <remarks>
@@ -45,11 +45,11 @@ namespace DinoLino.Utilities
         public bool SeeDirectory { get; set; } = true;
         public bool SeeRex { get; set; } = true;
 
-        /// Tag of the checked View ▸ Line Color radio button. Null until the user
-        /// picks a color, which leaves every work mode on its own default.
+        /// The color chosen in Settings ▸ Line Options. Null until the user picks one,
+        /// which leaves every work mode on its own default.
         public string LineColor { get; set; }
 
-        /// The color View ▸ Line Options opens on for a window that has never been
+        /// The color Settings ▸ Line Options opens on for a window that has never been
         /// told otherwise. Named here so a reset has something to name, since a null
         /// LineColor asks for the modes to be left alone rather than reddened.
         public const string DefaultLineColor = "Red";

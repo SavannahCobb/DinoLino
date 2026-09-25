@@ -464,7 +464,7 @@ namespace DinoLino.Utilities.Modes
         protected const string TipHelp =
             "💡 The user guide and software information can be found in the Help menu.";
         protected const string TipToggleTips =
-            "💡 Toggle tip visibility in the View menu.";
+            "💡 Toggle tip visibility in the Settings menu.";
 
         /// <summary>Trailer appended by BuildTips.</summary>
         private static readonly string[] CommonTipTail =

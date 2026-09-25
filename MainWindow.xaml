@@ -43,12 +43,17 @@
                 </MenuItem>
                 <MenuItem Header="_Import Folder" Click="Menu_ImportFolder"
                           ToolTip="Import every image and 3D model in a folder as specimens."/>
-                <MenuItem Header="_Export Operation History" Click="Menu_ExportHistory" InputGestureText="Ctrl+E"/>
+                <MenuItem Header="Operation _History">
+                    <MenuItem Header="_Edit Operation History" Click="Menu_SeeHistory" InputGestureText="Ctrl+H"
+                              ToolTip="Open the tables of everything measured this session, to review, edit or add columns."/>
+                    <MenuItem Header="E_xport Operation History" Click="Menu_ExportHistory" InputGestureText="Ctrl+E"
+                              ToolTip="Export the tables as an .xlsx workbook, one sheet per table."/>
+                </MenuItem>
                 <MenuItem Header="Save _Settings" x:Name="UI_MenuSaveSettings"
                           IsCheckable="True" IsChecked="False" Click="Menu_SaveSettings"
-                          ToolTip="Remember and keep View settings for later sessions"/>
+                          ToolTip="Remember the Settings menu choices for later sessions"/>
                 <MenuItem Header="_Restore Default Settings" Click="Menu_RestoreDefaults"
-                          ToolTip="Return every View setting to how the program first opens."/>
+                          ToolTip="Return every Settings menu choice to how the program first opens."/>
             </MenuItem>
             <MenuItem Header="_Edit" MouseLeave="Menu_MouseLeave">
                 <MenuItem Header="_Undo" x:Name="UI_MenuUndo" Click="Menu_Undo"  InputGestureText="Ctrl+Z"/>
@@ -85,7 +90,7 @@
                               ToolTip="Review cached specimen images and remove them one at a time."/>
                 </MenuItem>
             </MenuItem>
-            <MenuItem Header="_View" MouseLeave="Menu_MouseLeave">
+            <MenuItem Header="_Settings" MouseLeave="Menu_MouseLeave">
                 <MenuItem Header="_See Tips" x:Name="UI_SeeTips" IsCheckable="True" IsChecked="True" Click="Menu_SeeTips"/>
                 <MenuItem Header="_See Previous Operations" x:Name="UI_SeePrevOps" IsCheckable="True" IsChecked="False" Click="Menu_SeePrevOps" MouseLeave="Menu_MouseLeave"
                           ToolTip="Keep all previously drawn operations on screen until cleared."/>
@@ -101,7 +106,6 @@
                           ToolTip="Show the Directory browser for setting the working directory and opening files."/>
                 <MenuItem Header="See _Rex" x:Name="UI_SeeRex" IsCheckable="True" IsChecked="True" Click="Menu_SeeRex"
                           ToolTip="Show the creature artwork in the control panel."/>
-                <MenuItem Header="See _History" Click="Menu_SeeHistory"  InputGestureText="Ctrl+H"/>
                 <MenuItem Header="_Line Options" Click="Menu_LineOptions"
                           ToolTip="Choose the color and thickness every mode draws at."/>
                 <MenuItem Header="_Font" Click="Menu_Font"/>
@@ -145,7 +149,7 @@
                 <ColumnDefinition Width="4"/>
                 <ColumnDefinition Width="*"/>
                 <!-- Sidebar splitter and column: both collapse to zero width when
-                     both sidebar panels are toggled off in the View menu. -->
+                     both sidebar panels are toggled off in the Settings menu. -->
                 <ColumnDefinition x:Name="UI_SidebarSplitterColumn" Width="4"/>
                 <ColumnDefinition x:Name="UI_SidebarColumn" Width="260" MinWidth="180" MaxWidth="500"/>
             </Grid.ColumnDefinitions>
@@ -248,7 +252,7 @@
 
                     <!-- Creature art: the 1:2:1 columns make the middle column exactly half
                      the control panel's width, so the artwork is half size and centred
-                     without any hard-coded margins. Toggled from View ▸ See Rex. -->
+                     without any hard-coded margins. Toggled from Settings ▸ See Rex. -->
                     <Grid x:Name="UI_CreatureArtContainer">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -365,7 +369,7 @@
                     <!-- Attempt counter overlay (draggable HUD, bottom-right by default).
                      Drawn shapes are tallied one row per kind, matching the Shape Data
                      table's per-kind columns. The rows deliberately carry no FontSize
-                     of their own: the size is set on this Border, so View ▸ Font
+                     of their own: the size is set on this Border, so Settings ▸ Font
                      scales every row, including any added later. -->
                     <Border x:Name="UI_AttemptCounter"
                     HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -394,7 +398,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Image axes compass (View ▸ See Image Axes). One L-shaped
+                    <!-- Image axes compass (Settings ▸ See Image Axes). One L-shaped
                          double-headed arrow: the corner sits at the origin, one head
                          runs along the specimen's X axis and the other along its Y,
                          as set by Tools ▸ Align Image. The whole drawing turns by
@@ -469,7 +473,7 @@
                     </Border>
                     
                     <!-- Navigation window overlay: draggable, resizable overview of the whole image
-                     (View ▸ See Navigation Window). Clicking or dragging on the picture pans the
+                     (Settings ▸ See Navigation Window). Clicking or dragging on the picture pans the
                      zoomed workspace view to that spot. -->
                     <Border x:Name="UI_MiniMap" Panel.ZIndex="70"
                     HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -554,7 +558,7 @@
                   Cursor="SizeWE"/>
 
             <!-- Right sidebar: Batch Workshop on top, Directory below, each toggled
-                 independently in the View menu. Row heights are set by
+                 independently in the Settings menu. Row heights are set by
                  UpdateSidebarLayout in MainWindow_Workshop.cs; the whole column
                  collapses when both panels are hidden. -->
             <Grid x:Name="UI_Sidebar" Grid.Column="4">
@@ -565,7 +569,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- Both panel headers use this button: a fixed-size minus that hides
-                     the panel. FontFamily and FontSize are set locally so View ▸ Font
+                     the panel. FontFamily and FontSize are set locally so Settings ▸ Font
                      cannot scale the glyph out of its box. -->
                 <Grid.Resources>
                     <Style x:Key="SidebarMinimizeButton" TargetType="Button">
@@ -583,12 +587,12 @@
                 </Grid.Resources>
 
                 <!-- Batch Workshop: per-category export for every specimen in the
-                 session. Toggled from View ▸ See Batch Workshop. -->
+                 session. Toggled from Settings ▸ See Batch Workshop. -->
                 <DockPanel x:Name="UI_WorkshopPanel" Grid.Row="0" TextElement.FontSize="14" Margin="8,10,8,10">
                     <DockPanel DockPanel.Dock="Top" Margin="2,0,0,2">
                         <Button Style="{StaticResource SidebarMinimizeButton}"
                                 Click="Workshop_Minimize"
-                                ToolTip="Hide the Batch Workshop. Show it again from View ▸ See Batch Workshop."/>
+                                ToolTip="Hide the Batch Workshop. Show it again from Settings ▸ See Batch Workshop."/>
                         <TextBlock Text="Batch Workshop"
                                FontWeight="Bold" FontSize="16"
                                HorizontalAlignment="Left" VerticalAlignment="Center"/>
@@ -762,7 +766,7 @@
                     <DockPanel DockPanel.Dock="Top" Margin="2,0,0,2">
                         <Button Style="{StaticResource SidebarMinimizeButton}"
                                 Click="Directory_Minimize"
-                                ToolTip="Hide the Directory. Show it again from View ▸ See Directory."/>
+                                ToolTip="Hide the Directory. Show it again from Settings ▸ See Directory."/>
                         <TextBlock Text="Directory"
                                FontWeight="Bold" FontSize="16"
                                HorizontalAlignment="Left" VerticalAlignment="Center"/>

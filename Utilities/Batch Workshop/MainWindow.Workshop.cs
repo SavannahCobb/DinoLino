@@ -17,7 +17,7 @@ namespace DinoLino
         // Sidebar visibility
         // =====================
 
-        // Which panels the View menu has switched on. These match the initial
+        // Which panels the Settings menu has switched on. These match the initial
         // IsChecked values of UI_SeeWorkshop and UI_SeeDirectory, and the row heights
         // set in the XAML so the first paint needs no layout pass.
         private bool _workshopVisible = true;
@@ -54,14 +54,14 @@ namespace DinoLino
             UpdateSidebarLayout();
         }
 
-        /// <summary>Hides the Batch Workshop panel and unchecks its View menu item.</summary>
+        /// <summary>Hides the Batch Workshop panel and unchecks its Settings menu item.</summary>
         private void Workshop_Minimize(object sender, RoutedEventArgs e)
         {
             UI_SeeWorkshop.IsChecked = false;
             SetWorkshopVisible(false);
         }
 
-        /// <summary>Hides the Directory panel and unchecks its View menu item.</summary>
+        /// <summary>Hides the Directory panel and unchecks its Settings menu item.</summary>
         private void Directory_Minimize(object sender, RoutedEventArgs e)
         {
             UI_SeeDirectory.IsChecked = false;
