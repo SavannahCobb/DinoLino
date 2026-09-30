@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System;
+using System.Windows;
 
 namespace DinoLino.Utilities
 {
@@ -40,7 +41,19 @@ namespace DinoLino.Utilities
             // sitting over the desktop once the main window is out of the way, and
             // it can end up behind the window it belongs to.
             if (popup.Owner == null && mainWindow != null && mainWindow.IsLoaded)
-                popup.Owner = mainWindow;
+            {
+                try
+                {
+                    popup.Owner = mainWindow;
+                }
+                catch (InvalidOperationException)
+                {
+                    // A window shown with ShowDialog is already modal by the time
+                    // Loaded runs, and WPF refuses an owner after that. One shown
+                    // that way sets its own owner first; this is only the fallback,
+                    // and it is not worth bringing the program down over.
+                }
+            }
 
             // A window built for transparency cannot change frame, and one that
             // already asked for a particular frame keeps it.

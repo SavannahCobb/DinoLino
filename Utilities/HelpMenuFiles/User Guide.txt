@@ -4,11 +4,13 @@ ABOUT DINOLINO:
 
 DinoLino is a Windows program for 2D geometric morphometrics. It measures shape from photographs of specimens: curvature, angles, distances, and outlines.
 
-Each image opened is treated as a specimen that keeps its own scale, alignment, picture corrections, and measurements. Operations are drawn in Curvature Mode, Triangle Mode, Draw Mode, or Outline Mode, and the operation history can be exported as an .xlsx workbook for statistical analysis.
+Each image opened is treated as a specimen that keeps its own scale, alignment, picture corrections, and measurements. Operations are drawn in Curvature Mode, Angle Mode, Draw Mode, or Outline Mode, and the operation history can be exported as an .xlsx workbook for statistical analysis.
 
 The version number and list of contributors are in the About window of the Help menu.
 ------------------------------------------------------------------------------------------------
 PROJECTS:
+
+The five project commands are at the top of the File menu: New Project, Open Project, Save Project and Save Project As. A project is saved as a .dlino file.
 
 A project is a whole session in one file: every specimen with its picture, scale, alignment and picture corrections, every measurement together with the geometry behind it, the outlines kept as silhouettes, and the table state that goes with them. That last part covers the group columns, the formula columns, the variables chosen for the Custom table, the columns hidden from a table, and the tables staged for the workbook.
 
@@ -42,7 +44,7 @@ Redo:
 Redoes the last action that was undone by the user. This returns the metadata of the next calculation and redraws the operation.
 
 Clear:	
-Clears all drawn operations and resets the metadata to its initial state for the current specimen. Also available as the Clear Specimen button.
+Clears all drawn operations and resets the metadata to its initial state for the current specimen. Also available as the Clear Specimen Data button.
 
 Clear All:
 Clears all specimens, measurements, and images from the session. A confirmation is shown first.
@@ -79,6 +81,7 @@ Cancel:					Esc
 View next specimen:		Up arrow key
 View previous specimen: Down arrow key
 Zoom:					Scroll wheel (mouse) or pinch (trackpad)
+Scroll sideways:		Shift + scroll wheel, or a two-finger sideways swipe
 Drag image:				Ctrl + left click and drag
 Move cursor slowly:		Ctrl + arrow keys
 Move cursor quickly:	Shift + arrow keys
@@ -136,8 +139,11 @@ The stroke is resampled to points spaced 4 pixels apart, smoothed with a Gaussia
 
 Measures Turn.Angles/Length over a section of the most recently drawn spline instead of the whole curve. Move the cursor along the spline to choose the section. Section width sets the number of samples on each side of the cursor. Press Esc to exit.
 ------------------------------------------------------------------------------------------------
-TRIANGLE MODE:
+ANGLE MODE:
 
+Measures angles, in either of two ways. Choose one with the radio buttons at the top of the panel.
+
+----- Triangle -----
 Draws a triangle on the image and returns its three interior angles and proportions. 
 
 Click three times anywhere on the image to create a triangle. Click again to begin drawing another triangle.
@@ -150,6 +156,17 @@ Area:			Area of the triangle.
 Relative Size:	Area of the current triangle divided by the area of the previous triangle.
 
 Note: Triangle height is the perpendicular distance from its longest side to the opposite vertex.
+
+----- Axis Angle -----
+Measures which way a feature points, against the specimen's own axis rather than against another line.
+
+Click two points along the feature. The angle is measured clockwise from the specimen's X axis to the line drawn, over a full turn, so a feature pointing one way and the same feature pointing back read as different angles. A second click too close to the first is ignored rather than measured.
+
+Set the axis first with Tools, Align Image. Without one the angle is measured from the image's own axis instead, which depends on how the photograph happened to be rotated. The line beneath the reading says which of the two is in use, and the table records which one each angle was taken against.
+
+Angle:			Clockwise angle from the specimen's axis to the line drawn.
+
+The average is the mean direction, taken round the circle rather than as a plain average, so angles either side of the axis average to the direction between them.
 ------------------------------------------------------------------------------------------------
 DRAW MODE:
 
@@ -175,6 +192,23 @@ X Distance: Extent of the line along the specimen's X-axis (see Tools, Align Ima
 Y Distance: Extent of the line along the specimen's Y-axis. X and Y Distance are always positive, and together with Length form a right triangle.
 Line Ratio: Length of the drawn line divided by the length of the previous line.
 Angle: Clockwise angle from the previous line to the drawn line, from 0 to 360 degrees. Constrained lines are measured from the first constrained line.
+
+----- Add Label -----
+Put words, a dot or a star on the image. Choose which with the three buttons beneath Add Label, then click the image.
+
+Text: Words you type. They begin at the point clicked, and a new label is ready to type in straight away.
+Point: A filled black circle, centred on the point clicked.
+Star: A filled black star, centred on the point clicked.
+
+A label on the image is its mark and nothing else: no box, no border, and nothing behind it, so the picture shows through around it.
+Rest the pointer on a label for a second and a half and its box appears: a border, a pale ground behind the mark, a bin off the top corner, a grip off the bottom corner and a shaded strip along the top edge. Words can only be typed once the box is out, so passing the pointer over a label never disturbs what it says. Move the pointer away and the box goes again, unless the label is being typed in.
+A new label takes the font size and typeface set under Settings, Font, so labels match the rest of the writing on screen and a larger setting puts on a larger mark. Changing that setting afterwards changes the next label added; the labels already on the image keep the size and typeface they were given, and keep them when the project is saved and opened again.
+Drag the corner grip to size a label: out for larger, in for smaller. For words this is the size of the lettering; for a dot or a star it is how wide the mark is drawn. Each label keeps its own size from then on, and for words the box takes the width of what is typed rather than the other way about.
+Drag the strip along the top edge to move a label to another part of the image. A label cannot be dragged off the picture.
+Click the bin to remove that label. Undo removes the last label added, Redo puts back the last label removed, and Clear All removes every label along with everything else.
+Labels belong to the specimen rather than to its measurements. Each specimen keeps its own, changing specimen puts that specimen's labels on screen and no others, and they are saved with the project.
+Because a label annotates the picture rather than measuring it, it stays on screen whether See Previous Operations is on or off, it is not counted in the operation count, and it has no column in any table or export. The marks are included in Tools, Take Screenshot; the boxes and their handles are left out.
+A label keeps its place on the image, so it stays on the feature it names when the window is resized, the view zoomed, or the image flipped or rotated.
 
 ------------------------------------------------------------------------------------------------
 OUTLINE MODE:
@@ -234,7 +268,9 @@ Solidity: Area of the outlined shape / Convex hull area
 Convexity: Convex hull perimeter / Perimeter
 Turn.Angles/Length: A measure of curvature. The sum of the turning angles (absolute change in angle of the tangent lines along the outline, in degrees) divided by the outline perimeter length. Approximates the average change in angle of the tangent lines along the outline.
 
-Elliptic Fourier Analysis: Click to open a pop-up window to perform Elliptic Fourier Analysis (EFA) on the outline. The default number of harmonics is the smallest number that captures 99% of the cumulative harmonic power, and may be changed. Coefficients are normalized on the first harmonic. A warning is shown if the first harmonic is too small or too circular for a reliable normalization.
+Elliptic Fourier Analysis: Click to open a pop-up window to perform Elliptic Fourier Analysis (EFA) on the outline. The default number of harmonics is the smallest number that captures 99% of the cumulative harmonic power, and may be changed. A warning is shown if the first harmonic is too small or too circular for a reliable normalization.
+
+Rotation sets what the coefficients are turned onto before they are compared. First harmonic turns each outline onto the major axis of its own first-harmonic ellipse: nothing has to be set up first, and it is the convention published coefficients are usually given in, but it takes each outline's orientation from its own shape, so two specimens held at different angles to their own anatomy come out the same way up. Drawn axis turns each outline onto the specimen's X axis instead (see Tools, Align Image), which keeps the angle a specimen genuinely sits at relative to its anatomy, and keeps which side of that axis the shape leans to. Size and start point are normalized the same way under either choice. Choose Drawn axis on a specimen with no axis drawn and the first harmonic is used instead, with a warning saying so. The summary names the rotation used, and the angle when it came from a drawn axis, so coefficients measured against an axis that has since been redrawn can be told apart.
 
 Commit Outline to History: Saves the outline and its metadata as an operation.
 
@@ -251,18 +287,19 @@ Open a 2D image file to analyze. Supported formats include .jpg, .png, .tif, and
 Open a 3D file to analyze. PLY, OBJ, and STL files are supported. 
 Position the model by pressing the scroll wheel and dragging, or by pressing the arrow keys. 
 Click 'Capture View' to finish positioning the object. This will save the view as a 2D image, which the user can begin measuring.
+'Apply to all 3D objects' gives every other 3D object in the session the same orientation and captures a view of each, so a sample can be posed once rather than one at a time.
 
 Note: DinoLino is currently limited to 2D morphometrics. Measurements may only be taken on 2D projections of the 3D model.
 
 ----- Import Folder -----
-Import a folder of images to analyze. Incompatible file types will be ignored.
+Import a folder of images and 3D models to analyze. Incompatible file types will be ignored.
 Folders that contain several large files may take several minutes to import.
 
 ----- Operation History -----
 Resting on Operation History offers two things to do with what has been measured, Edit and Export.
 
 Edit Operation History:
-Opens the tables of everything measured this session, one tab per kind of operation, plus a Custom tab. Rows may be reviewed and deleted, and formula columns added. Each table can also be exported on its own as a CSV.
+Opens the tables of everything measured this session, one tab per kind of operation, plus a Custom tab. Rows may be read here and formula columns added, and each table can be exported on its own as a CSV or staged for the workbook. Rows and specimens are deleted from the Batch Workshop Edit window instead.
 
 Export Operation History:
 Export the history of all operations performed. Undone or cleared operations will not be included. The exported file will be a workbook in .xlsx format, with each operation's history on a separate sheet.
@@ -271,7 +308,7 @@ Export the history of all operations performed. Undone or cleared operations wil
 Keep the current Settings menu choices for the next session.
 
 ----- Restore Default Settings -----
-Return the View menu settings to their defaults.
+Return the Settings menu choices to their defaults.
 
 ------------------------------------------------------------------------------------------------
 EDIT:
@@ -285,10 +322,35 @@ Redoes the most recently undone operation. This reinstates the drawn elements an
 ------------------------------------------------------------------------------------------------
 TOOLS:
 
+----- Scale -----
+Holds the scale commands: Set Scale, View Scalebar, and the two that pass a scale to other specimens. Everything but Set Scale is greyed out until a scale is set, since without one there is nothing to show and nothing to pass on.
+
 ----- Set Scale -----
 Click on two points in the image to draw a line. Enter the real-world length of the line in the input box and click "OK" to set the scale. 
 This will allow the software to convert pixel measurements to real-world units. Available units are km, hm, dam, m, dm, cm, mm, micrometers, and nm.
 Each specimen keeps its own scale. Measurements are shown as Unscaled until a scale is set.
+
+----- View Scalebar -----
+Toggle on or off to display a scalebar in the workspace. The unit it reads in is printed at the end of the bar.
+Unzoomed, the bar reads in the unit the specimen was scaled in. Zoomed, the unit follows the view: zooming in reads in a smaller unit and zooming out in a larger one, taken from the same list Set Scale offers, so the numbers stay easy to count at any magnification.
+The bar is divided into ten segments, alternating black and white, with a tick rising out of it under each of the eleven numbers so a number can be read against the exact place it marks. Its length on screen is taken from the scale and from how far the image is zoomed in, so it reads true at any magnification and lengthens as you zoom in.
+The numbers read 0 to 10 wherever ten of the unit fits the view at a readable width. Where it does not, each segment counts more than one unit, and the numbers say so: 0, 5, 10 and on to 50. Unzoomed the unit is held to the one you scaled in, so there a segment may instead count a fraction of one: 0, 0.5, 1.0 and on to 5.0. The division is taken again whenever the zoom or the window changes.
+A grip at the right end of the bar sets its length. Drag it sideways and the span changes with it, so a longer bar covers more units and a shorter one fewer. The length snaps to one the scale can honestly show, so the bar steps between readings rather than following the pointer exactly. Only sideways travel counts: the bar keeps its height. Double-click the grip to hand the length back to the view.
+This is not a Settings switch and is not kept by Save Settings, because it belongs to a specimen that has a scale rather than to the program.
+The scalebar may be dragged anywhere in the workspace, and is included in Tools, Take Screenshot. The grip is left out of the screenshot, the way the cursor is.
+
+----- Apply Scale to All Specimens -----
+Gives every other specimen the scale of the one on screen. One photographic setup usually serves a whole tray of specimens, so a scale measured once on one of them is the scale for all of them, and there is no reason to measure it again on each.
+A specimen that already has a scale measured on its own image is not written over without being asked about. The question offers Overwrite or Leave Them, and a tick box to stop it being asked again; Cancel leaves every specimen exactly as it was. The choice is remembered for the rest of the session, and between sessions when File, Save Settings is on.
+A specimen already carrying a scale passed on from somewhere else is replaced without asking, since nothing measured is lost by it.
+When the command finishes it says how many specimens took the scale and how many kept their own.
+
+----- Apply Scale to Selected Specimens -----
+The same, for the specimens ticked in Directory, Sample rather than all of them. Greyed out until at least one is ticked there. The specimen on screen is never a target, so its measured scale is never marked as passed on.
+
+----- Scales that were passed on -----
+A specimen given another specimen's scale is marked as having inherited it, so a reader can always tell which specimens were actually measured. The mark appears in two places: beside the specimen's name in Directory, Sample, and on the sidebar beneath the specimen name, which reads Scale: inherited.
+An inherited scale is a working scale in every other respect: it converts measurements, drives the scalebar, and is saved with the project. Measuring a scale on the specimen itself with Set Scale replaces it and clears the mark.
 
 ----- Align Image -----
 Set the specimen's X or Y axis by clicking two points on the image. The other axis is set perpendicular to it. Used for X Distance and Y Distance in Draw Mode.
@@ -334,7 +396,7 @@ Toggle on or off to keep drawn elements of previous operations on the screen.
 
 ----- See Operation Count -----
 View the number of operations performed for each specimen. 
-Toggle on to display an on-screen window which contains the number of circular arcs, parabolic arcs, splines, triangles, lines, and outlines drawn for a given specimen.
+Toggle on to display an on-screen window which contains the number of circular arcs, parabolic arcs, splines, triangles, rectangles, squares, ellipses, circles, lines, and outlines drawn for a given specimen. A kind with nothing drawn yet is left out of the window.
 Opening a new specimen resets count to zero for all operations. Undo and Redo also affect operation count.
 The Operation Count window may be dragged anywhere in the workspace.
 
@@ -347,10 +409,19 @@ The navigation window shows a zoomed-out view of the image, with a rectangle ind
 While zoomed in, click anywhere in the navigation window to move the viewable area to that location.
 
 ----- See Batch Workshop -----
-Edit and export data tables as CSV files for each mode. Toggle on or off to display on the right sidebar.
+Edit and export data tables for each mode. Each mode's table exports as a CSV, All Geometric Data exports as an .xlsx workbook, and 2D Outlines exports silhouette images. Toggle on or off to display on the right sidebar.
+
+Groups:
+Tick specimens in the Sample tab and click Add to group to put them in a named group. A group is a column of its own: it appears after Specimen and Attempt in every table and in every export, and a specimen may belong to one group per column. Column and group names are capped at 14 characters.
+
+Hidden Columns:
+The Edit window of each table marks every column with a cross that hides it. A hidden column leaves the table and that table's exports but keeps its measurements, and Restore hidden columns brings them all back. The Operation History window deliberately ignores hiding, so a hidden column can still be read there.
+
+The Workbook:
+Each tab of the Operation History window has an Add to workbook button. Staged tables are counted in the footer of that window and are the ones written when the workbook is exported. With nothing staged, every table is written instead.
 
 Formula Columns:
-Click Edit beside Curvature Data, Angle Data, Shape Data, Outline Metadata or EFA Data, then Add column, to make a new variable calculated from that table's columns. Enter a name of up to 14 characters and a formula, such as = outline_area / outline_perim^2. Column names may be typed straight into the formula, or found in the list beside it and inserted.
+Click Edit beside Curvature Data, Angle Data, Shape Data, Outline Metadata or EFA Data, then Add column, to make a new variable calculated from that table's columns. The All Geometric Data row below them opens the same window as Operation History, which carries the same button. Enter a name of up to 14 characters and a formula, such as = outline_area / outline_perim^2. Column names may be typed straight into the formula, or found in the list beside it and inserted.
 Each tab of the History window carries the same button. A column added from a tab belongs to the table that tab is part of, and is edited or deleted from that table's Edit window.
 A column name in a formula stands for that column's value on the same row. Formulas use addition, subtraction, multiplication, division and powers, with brackets to group them. Comparisons are written = <> < <= > >= and give 1 or 0, as in IF(outline_area > 100, 1, 0).
 Row functions: SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT, MEDIAN, ABS, SQRT, LN, LOG, LOG10, EXP, POWER, MOD, ROUND, INT, SIGN, PI, SIN, COS, TAN, ASIN, ACOS, ATAN, ATAN2, DEGREES, RADIANS, IF, IFBLANK, ISBLANK.
@@ -358,7 +429,8 @@ Whole-column functions, taken over every specimen: COLSUM, COLMEAN, COLMIN, COLM
 Specimen functions, taken over the row's own specimen: SPECSUM, SPECMEAN, SPECMIN, SPECMAX, SPECCOUNT, SPECMEDIAN, SPECSD.
 Each of these takes one column name, as in SPECMEAN(outline_area). COLSD and SPECSD are sample standard deviations, which need at least two values.
 A blank cell is not zero. Any arithmetic using a blank cell gives a blank result, so a row without that measurement is left empty rather than counted as zero. SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT and MEDIAN skip blank arguments, and IFBLANK(value, 0) puts a number in their place. A calculation with no numerical answer, such as division by zero, shows #ERR.
-Cells carry their units, such as 4.56 cm, and a formula reads the number in front of the unit. Results are plain numbers rounded to 4 decimal places, so a formula that mixes scaled and unscaled specimens mixes their units as well.
+Cells carry their units, such as 4.56 cm, and a formula reads the number in front of the unit. Each specimen's measurements are converted with that specimen's own scale, so a table spanning specimens scaled in different units shows each of them correctly in its own.
+Results are plain numbers rounded to 4 decimal places, and the unit is dropped when a cell is read for a formula, a plot, or a Principal Component Analysis. So any of those drawing on specimens scaled in different units is mixing those units together, without saying so, and it is worth scaling a sample in one unit throughout. Apply Scale to All Specimens is the quickest way to do that.
 A row holds attempt n of every operation kind in its table, so a formula combining two kinds combines their nth attempts.
 Formula columns are recalculated whenever a table is built, and appear in the table, in its CSV and workbook exports, in the History window, and among the variables offered in the Plot tab and Principal Component Analysis. A formula may use any formula column made before it. The pencil button on a column header edits or deletes the column, and the X button hides it as for any other column.
 Formula columns last for the session and are removed by Clear All.
@@ -373,10 +445,10 @@ EFA Data:
 The coefficients table may be exported in wide format in Batch Workshop, or it may be exported in the Elliptic Fourier Analysis window.
 
 2D Outlines:
-All outlines created in a session may be exported as black silhouettes on a white background. Outlines are automatically filled prior to export.
-All generated outlines will be exported unless they are manually removed in the Edit window.
+Outlines kept with Commit Outline to History may be exported as black silhouettes on a white background. Outlines are automatically filled prior to export. An outline that was only drawn is not exported; only the ones committed are, and they are the snapshots taken at commit time, so undoing or editing an outline afterwards does not change what comes out.
+Committed outlines may be removed one at a time from the silhouette gallery.
 Select a destination folder for export, a file type (.png, .tif, .bmp, .jpg, or .svg), and desired canvas size.
-Scale: Outline area will be resized such that the filled shape covers 25% of the canvas. 
+Scale: Off by default, which exports every outline at the size it was traced. Switched on, each outline is resized so the filled shape covers 25% of the canvas.
 	   Some elongated shapes are exceptions to this. If an elongated shape at target area reaches past the margins, it is shrunk until it fits within the canvas.
 Align: Outlines may be rotated onto the long axis to align orientations, or exported in original orientation.
 
@@ -388,7 +460,7 @@ Browse folders and open images or 3D models.
 The working directory can be set three ways: right-click a folder and choose Set Working Directory, click a folder and then click Set, or type or paste a path into the box and click Set or press Enter. Clicking a folder puts its path in the box, so what Set is about to apply is always the path on screen.
 
 Sample:
-View, rename, load, duplicate, or delete specimens in the session.
+View, load, duplicate, and remove specimens in the session, assign them to groups, and reposition a 3D object to capture a new view.
 
 Plot:
 Plot recorded measurements as a scatter plot, boxplot, dot plot, histogram, or QQ plot, and export the plot as an image.
@@ -409,6 +481,7 @@ With See Previous Operations switched on, the measurements already on screen are
 ----- Font ----- 
 Adjust font size or font family. Dyslexia-friendly fonts are available. 
 If needed, you may accommodate very large font sizes by resizing the sidebar or program window with clicking and dragging.
+The font size and typeface also set how a new label from Draw mode's Add Label starts out. Labels already on an image are not changed by it.
 
 ----- Column names and abbreviations -----
 
@@ -430,12 +503,14 @@ In Curvature Mode:
 "spline_tortuosity" = Total length divided by chord length of n-Point Spline
 "spline_length" = Length of n-Point Spline
 
-In Triangle Mode:
+In Angle Mode:
 "tri_anglea" = Angle A of Triangle
 "tri_angleb" = Angle B of Triangle
 "tri_anglec" = Angle C of Triangle
 "tri_aspect" = Aspect Ratio of Triangle
 "tri_area" = Area of Triangle
+"axis_angle" = Angle from the specimen's axis to the line drawn, clockwise, in degrees
+"spec_aligned" = Whether the specimen had an axis set when the angle was measured
 
 In Draw Mode:
 "rect_aspect" = Aspect Ratio of Rectangle
@@ -449,6 +524,7 @@ In Draw Mode:
 "line_ydist" = Y Distance of Line
 "line_ratio" = Ratio of line length relative to previous line length
 "line_angle" = Angle of line relative to previous line
+"spec_aligned" = Whether the specimen had an axis set when the line was measured
 
 In Outline Mode:
 "outline_maxlength" = Maximum Length of Outline
@@ -466,6 +542,14 @@ In Outline Mode:
 "outline_vertices" = Number of points in the drawn outline
 "outline_hasmeta" = Whether metadata was generated for the outline
 "efa_harmonics" = Number of Elliptic Fourier Analysis harmonics
+"efa_a1", "efa_b1", "efa_c1", "efa_d1", ... = The four Elliptic Fourier coefficients of each harmonic, one set per harmonic
 
 Columns added with Add column appear under the name given to them, after the measurement columns.
 ------------------------------------------------------------------------------------------------
+HELP:
+
+----- About -----
+The version number and the list of contributors.
+
+----- User Guide -----
+This guide. Sections are listed down the side and may be read in any order.

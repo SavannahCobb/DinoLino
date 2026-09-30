@@ -60,9 +60,29 @@
                 <MenuItem Header="_Redo" x:Name="UI_MenuRedo" Click="Menu_Redo"  InputGestureText="Ctrl+Y"/>
             </MenuItem>
             <MenuItem Header="_Tools" MouseLeave="Menu_MouseLeave">
-                <MenuItem Header="_Set Scale" x:Name="UI_MenuSetScale" IsEnabled="False"
-                          Click="Menu_SetScale"
-                          ToolTip="Calibrate measurements: click both ends of a feature of known length, then enter that length."/>
+                <MenuItem Header="_Scale" x:Name="UI_MenuScale" IsEnabled="False"
+                          SubmenuOpened="MenuScale_SubmenuOpened">
+                    <MenuItem Header="_Set Scale" Click="Menu_SetScale"
+                              ToolTip="Calibrate measurements: click both ends of a feature of known length, then enter that length."/>
+                    <MenuItem Header="_View Scalebar" x:Name="UI_MenuViewScaleBar"
+                              IsCheckable="True" IsChecked="False" IsEnabled="False"
+                              Click="Menu_ViewScaleBar"
+                              ToolTip="Show a scalebar for this specimen, marked 0 to 10 in a unit that suits the zoom &#x2014; the unit it was scaled in when unzoomed. Needs a scale set first."/>
+                    <Separator/>
+                    <!-- Copying a scale forward: one photographic setup usually serves a
+                         whole tray of specimens, so the scale measured once on one of them
+                         is the scale for all of them. A specimen given a scale this way is
+                         marked as having inherited it, in Directory &#x25b8; Sample and on
+                         the sidebar, so a reader can still tell which were measured. -->
+                    <MenuItem Header="Apply Scale to _All Specimens" x:Name="UI_MenuApplyScaleAll"
+                              IsEnabled="False" Click="Menu_ApplyScaleAll"
+                              ToolTipService.ShowOnDisabled="True"
+                              ToolTip="Give every other specimen this specimen's scale. Anything already measured on its own image is asked about first."/>
+                    <MenuItem Header="Apply Scale to Selecte_d Specimens" x:Name="UI_MenuApplyScaleSelected"
+                              IsEnabled="False" Click="Menu_ApplyScaleSelected"
+                              ToolTipService.ShowOnDisabled="True"
+                              ToolTip="Give this specimen's scale to the ones ticked in Directory &#x25b8; Sample."/>
+                </MenuItem>
                 <MenuItem Header="_Align Image" x:Name="UI_MenuAlignImage"
                           Click="Menu_AlignImage" IsEnabled="False"
                           ToolTip="Note the specimen's X or Y axis. The alignment is stored with the specimen."/>
@@ -187,7 +207,7 @@
                     <TabControl x:Name="UI_ControlTabs" Margin="0,10,0,10"
                             SelectionChanged="ControlTabs_SelectionChanged">
                         <TabItem Header="Curvature"/>
-                        <TabItem Header="Triangle"/>
+                        <TabItem Header="Angle"/>
                         <TabItem Header="Draw"/>
                         <TabItem Header="Outline"/>
                     </TabControl>
@@ -285,7 +305,17 @@
                 <Grid x:Name="UI_WorkSpace" Grid.Row="0" Grid.Column="0" ClipToBounds="True">
                     <Grid MouseMove="WorkSpace_MouseMove" MouseLeave="WorkSpace_MouseLeave" MouseDown="WorkSpace_Click" MouseUp="WorkSpace_MouseUp" MouseWheel="WorkSpace_ScrollZoom">
                         <Border x:Name ="UI_WorkBorder" BorderBrush="White" BorderThickness="3" Panel.ZIndex="10" Width="{Binding ActualWidth, ElementName=UI_WorkImage, Mode=OneWay}" Height="{Binding ActualHeight, ElementName=UI_WorkImage, Mode=OneWay}">
-                            <Canvas x:Name="UI_WorkCanvas" Focusable="True"/>
+                            <Grid>
+                                <Canvas x:Name="UI_WorkCanvas" Focusable="True"/>
+
+                                <!-- Labels from Draw mode's Add Label (Utilities\Modes\DrawModeFiles\DrawMode.cs).
+                                     A layer of their own, above the drawings and inside the same
+                                     border, so they carry the zoom and the pan with the picture but
+                                     are not swept up when See Previous Operations clears the drawn
+                                     operations. No Background, so the layer itself is not a click
+                                     target and only the labels on it are. -->
+                                <Canvas x:Name="UI_LabelCanvas"/>
+                            </Grid>
                         </Border>
                         <Canvas x:Name="UI_WorkBackground" Background="Gray" />
                         <Image x:Name="UI_WorkImage"/>
@@ -389,12 +419,60 @@
                             <TextBlock x:Name="UI_AttemptPara"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptSpline"  Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptAngle"   Foreground="#EEE" Margin="0,1"/>
+                            <TextBlock x:Name="UI_AttemptAxis"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptRect"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptSquare"  Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptEllipse" Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptCircle"  Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptLine"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptOutline" Foreground="#EEE" Margin="0,1"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Scalebar (Tools ▸ Scale ▸ View Scalebar). Ten segments, alternating
+                         filled and open, labelled 0 to 10 in the chosen unit. Its length
+                         is taken from the calibration and the live zoom, so it reads true
+                         at any magnification and lengthens as the image is zoomed into. The
+                         unit is captioned at its end: the one the specimen was scaled in
+                         while unzoomed, and one chosen to suit the zoom otherwise, so zooming
+                         in reads in a smaller unit and zooming out in a larger one. A tick
+                         rises out of the bar under each number. Draggable, so it can be put
+                         where the specimen is not. -->
+                    <Border x:Name="UI_ScaleBar" Panel.ZIndex="56"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                            Margin="16,0,0,80"
+                            Background="White" BorderBrush="Black" BorderThickness="1"
+                            Padding="6,4,6,4"
+                            Cursor="SizeAll" Visibility="Collapsed"
+                            ToolTip="The scale at the current zoom. Drag to move."
+                            MouseLeftButtonDown="ScaleBar_MouseDown"
+                            MouseMove="ScaleBar_MouseMove"
+                            MouseLeftButtonUp="ScaleBar_MouseUp"
+                            LostMouseCapture="ScaleBar_LostCapture">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="UI_ScaleBarTransform"/>
+                        </Border.RenderTransform>
+
+                        <StackPanel Orientation="Horizontal">
+                            <StackPanel>
+                                <Canvas x:Name="UI_ScaleBarCanvas" HorizontalAlignment="Left"/>
+
+                                <TextBlock x:Name="UI_ScaleBarNote" Foreground="Black"
+                                           TextWrapping="Wrap" MaxWidth="220"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+
+                            <!-- Length grip. Only the sideways travel is read, so the bar's
+                                 height never changes, and it is left out of a screenshot the
+                                 way the cursor is: it is a control, not part of the figure. -->
+                            <Border x:Name="UI_ScaleBarGrip" Width="7" Margin="5,1,0,1"
+                                    Background="#FFE8E8E8" BorderBrush="#FF808080"
+                                    BorderThickness="1" Cursor="SizeWE"
+                                    ToolTip="Drag sideways to lengthen or shorten the bar, which changes how many units it spans. Double-click to fit it to the view again."
+                                    MouseLeftButtonDown="ScaleBarGrip_MouseDown"
+                                    MouseMove="ScaleBarGrip_MouseMove"
+                                    MouseLeftButtonUp="ScaleBarGrip_MouseUp"
+                                    LostMouseCapture="ScaleBarGrip_LostCapture"/>
                         </StackPanel>
                     </Border>
 

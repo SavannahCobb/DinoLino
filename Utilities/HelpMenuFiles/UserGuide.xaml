@@ -73,6 +73,15 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Padding" Value="26,4,8,12"/>
             <Setter Property="IsTabStop" Value="False"/>
+
+            <Style.Triggers>
+                <!-- A section of "label: value" lines is set out in two columns, and
+                     spaces only line up in a font whose characters all measure the
+                     same. -->
+                <DataTrigger Binding="{Binding IsTable}" Value="True">
+                    <Setter Property="FontFamily" Value="Consolas, Courier New"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
     </Window.Resources>

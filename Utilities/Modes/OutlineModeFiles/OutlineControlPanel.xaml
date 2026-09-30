@@ -129,7 +129,7 @@
                  IsChecked="{Binding PushOutlineMode, Mode=TwoWay}"
                  MinHeight="26"
                  Margin="0,8,0,0"
-                 ToolTip="Click and drag from inside the outline outward to expand it — or hold Ctrl and move the cursor."/>
+                 ToolTip="Click and drag from inside the outline outward to expand it — or hold Alt and move the cursor."/>
 
             <StackPanel Visibility="{Binding PushOutlineMode,
                                      Converter={StaticResource BoolToVis}}">

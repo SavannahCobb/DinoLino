@@ -58,17 +58,15 @@ namespace DinoLino.Utilities
             _history.RemoveAt(_history.Count - 1);
             _redoStack.Add(last);
 
-            // Apply metadata from new top of history
-            if (_history.Count > 0)
-            {
-                var newTop = _history.Last();
+            // Apply metadata from the newest entry that has a reading to give. An entry
+            // that measures nothing, such as a text note, is passed over: it would leave
+            // the panel showing the result of the operation just undone.
+            var newTop = _history.LastOrDefault(o => o.CarriesMetadata);
+
+            if (newTop != null)
                 newTop.ApplyMetadataToMode();
-            }
             else
-            {
-                // No history left, clear metadata in all modes
                 last.SourceMode?.ClearMetadata();
-            }
 
             last.SourceMode?.OnHistoryChanged();
             OnPropertyChanged(nameof(CanUndo));
@@ -212,6 +210,21 @@ namespace DinoLino.Utilities
 
             OnPropertyChanged(nameof(CanUndo));
             OnPropertyChanged(nameof(CanRedo));
+        }
+
+        /// Takes one operation out of the live history and leaves it where Redo can
+        /// reach it, which is what Undo does to the newest one. Used by a text note's
+        /// own bin, since the note being deleted is not always the newest thing done.
+        public bool Retract(WorkOperation operation)
+        {
+            if (operation == null) return false;
+            if (!_history.Remove(operation)) return false;
+
+            _redoStack.Add(operation);
+
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+            return true;
         }
 
         // ---- Editing (Batch Workshop) ----

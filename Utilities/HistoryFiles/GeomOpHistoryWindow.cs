@@ -40,7 +40,7 @@ namespace DinoLino.Utilities
         // than from the rows captured when the tabs were drawn.
         private readonly UndoRedoManager _undoRedo;
         private readonly string _currentName;
-        private readonly ScaleCalibration _scale;
+        private readonly ScaleSource _scale;
 
         // One flattened table staged for export: sheet name, column headers, and
         // rows already formatted as display strings.
@@ -107,10 +107,13 @@ namespace DinoLino.Utilities
             },
             new TabSpec
             {
-                Name = "Triangle",
-                FileName = "triangle_history.csv",
+                // Both angle tools on one tab, so a specimen's triangles and its axis
+                // angles are read side by side rather than a tab apart.
+                Name = "Angle",
+                FileName = "angle_history.csv",
                 Category = WorkshopCategory.Angle,
                 Pick = g => g.OperationType == typeof(GetAngleOperation)
+                         || g.OperationType == typeof(AxisAngleOperation)
             },
             new TabSpec
             {
@@ -137,7 +140,7 @@ namespace DinoLino.Utilities
             }
         };
 
-        public GeomOpHistoryWindow(UndoRedoManager undoRedo, string specimenName, ScaleCalibration scale)
+        public GeomOpHistoryWindow(UndoRedoManager undoRedo, string specimenName, ScaleSource scale)
         {
             _undoRedo = undoRedo;
             _currentName = specimenName;
@@ -192,14 +195,14 @@ namespace DinoLino.Utilities
         // category is named separately so the tab also carries that table's formula
         // columns, as far as the operation kinds on the tab can supply them.
         private static WorkshopTable BuildTable(
-            TabSpec spec, UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            TabSpec spec, UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var groups = WorkshopTables.ColumnGroups(spec.Category, ur, scale)
                 .Where(spec.Pick)
                 .ToList();
 
             return WorkshopTables.BuildFromGroups(
-                null, groups, ur, currentName, WorkshopTables.KeyFor(spec.Category));
+                null, groups, ur, currentName, scale, WorkshopTables.KeyFor(spec.Category));
         }
 
         // For each specimen, a header and a grid of that kind's operations. The grid
@@ -488,7 +491,7 @@ namespace DinoLino.Utilities
                     var tick = new CheckBox
                     {
                         Content = name,
-                        IsChecked = CustomTableSelection.IsSelected(category, name),
+                        IsChecked = CustomTableSelection.IsSelected(name),
                         Margin = new Thickness(8, 1, 4, 1)
                     };
                     tick.Click += (s, e) =>
@@ -815,7 +818,7 @@ namespace DinoLino.Utilities
         public static void ClearStagedSheets() => _selectedSheets.Clear();
 
         public static void ExportAllOperationHistory(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var dlg = new SaveFileDialog
             {
@@ -841,7 +844,7 @@ namespace DinoLino.Utilities
         /// Writes the Batch Workshop's All Geometric Data workbook: the sheets staged
         /// in the History window, or every sheet when none have been staged.
         public static void ExportAllGeometricData(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var sheets = _selectedSheets.Count > 0
                 ? StagedSheets(ur, currentName, scale)
@@ -873,14 +876,14 @@ namespace DinoLino.Utilities
         // Staged sheets, rebuilt from live history rather than from the rows captured
         // when the tabs were drawn, so a workbook exported after an edit is current.
         private static List<WorkbookSheet> StagedSheets(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale) =>
+            UndoRedoManager ur, string currentName, ScaleSource scale) =>
             BuildAllSheets(ur, currentName, scale)
                 .Where(s => _selectedSheets.Contains(s.Name))
                 .ToList();
 
         // One sheet per tab, in tab order.
         private static List<WorkbookSheet> BuildAllSheets(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var sheets = new List<WorkbookSheet>();
 
@@ -910,7 +913,7 @@ namespace DinoLino.Utilities
 
         /// <summary>Writes one Batch Workshop category's wide table to a CSV.</summary>
         public static void ExportWorkshopCsv(
-            WorkshopCategory category, UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            WorkshopCategory category, UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var table = WorkshopTables.Build(category, ur, currentName, scale);
 
@@ -1081,14 +1084,16 @@ namespace DinoLino.Utilities
         // Real-world units when calibrated, else raw image pixels so the cell is
         // never blank. The input is in image pixels, the unit every stored
         // measurement uses, so the number does not depend on the window size at the
-        // moment of export.
-        internal static string FmtLength(double imagePixels, ScaleCalibration scale) =>
-            scale != null && scale.IsCalibrated
+        // moment of export. The calibration is passed by value, and it is the one
+        // belonging to the specimen whose row this is: a table spanning specimens
+        // scaled differently gives each of them its own ratio and its own unit.
+        internal static string FmtLength(double imagePixels, ScaleState scale) =>
+            scale.IsSet
                 ? $"{scale.ToUnitsFromImage(imagePixels):F2} {scale.Unit}"
                 : $"{Math.Round(imagePixels, 1).ToString(CultureInfo.InvariantCulture)} px";
 
-        internal static string FmtArea(double imagePixelArea, ScaleCalibration scale) =>
-            scale != null && scale.IsCalibrated
+        internal static string FmtArea(double imagePixelArea, ScaleState scale) =>
+            scale.IsSet
                 ? $"{scale.ToUnitsAreaFromImage(imagePixelArea):F2} {scale.Unit}\u00B2"
                 : $"{Math.Round(imagePixelArea, 1).ToString(CultureInfo.InvariantCulture)} px\u00B2";
 

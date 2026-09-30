@@ -804,7 +804,12 @@ namespace DinoLino.Utilities.Modes
         {
             if (_activePolyline == null) return;
 
-            if (UndoRedoManager?.CurrentOperation is OutlineOperation op
+            // The newest outline rather than the newest operation: anything committed
+            // after it, a measurement in another mode or a text note, would otherwise
+            // stand between this edit and the outline it belongs to.
+            var op = UndoRedoManager?.History.OfType<OutlineOperation>().LastOrDefault();
+
+            if (op != null
                 && op.Elements != null
                 && op.Elements.Contains(_activePolyline))
             {
@@ -1237,12 +1242,22 @@ namespace DinoLino.Utilities.Modes
                     ? GeometryCalculations.ResampleClosed(pts, ContourSampleCount)
                     : pts;
             }
-            EFDCoefficientsResult = _efd.ComputeNormalized(efaSource, harmonics);
+            double? drawnAxis = DrawnAxisRadians();
+            EFDCoefficientsResult =
+                _efd.ComputeNormalized(efaSource, harmonics, EfdRotation, drawnAxis);
+
+            // What the normalizer settled on rather than what was asked for, so a run
+            // that could not use the drawn axis says so.
+            EfdRotationReference rotationUsed = _efd.RotationReference;
+            double? rotationDegrees = rotationUsed == EfdRotationReference.DrawnAxis && drawnAxis.HasValue
+                ? drawnAxis.Value * 180.0 / Math.PI
+                : (double?)null;
 
             // Presentation strings are built by the formatter — the mode
             // computes numbers, the formatter owns the text
             NormalizationWarning = OutlineMetadataFormatter.BuildNormalizationWarning(
-                _efd.NormalizationStatus, _efd.FirstHarmonicAxisRatio);
+                _efd.NormalizationStatus, _efd.FirstHarmonicAxisRatio,
+                rotationUsed, _efd.FellBackToFirstHarmonic);
 
             MetadataSummary = OutlineMetadataFormatter.BuildSummary(
                 AspectRatioResult,
@@ -1260,10 +1275,17 @@ namespace DinoLino.Utilities.Modes
                 harmonics,
                 EFDCoefficientsResult,
                 _efd.NormalizationStatus,
-                _efd.FirstHarmonicAxisRatio);
+                _efd.FirstHarmonicAxisRatio,
+                rotationUsed,
+                rotationDegrees);
 
             // Stamp the result onto the committed operation so it persists with undo/redo
-            if (UndoRedoManager?.CurrentOperation is OutlineOperation op)
+            // The newest outline rather than the newest operation: a measurement in
+            // another mode or a text note committed after it would otherwise leave the
+            // outline without its metadata, and so out of the counter and every export.
+            var op = UndoRedoManager?.History.OfType<OutlineOperation>().LastOrDefault();
+
+            if (op != null)
             {
                 op.AspectRatio = AspectRatioResult;
                 op.MaxLengthImagePixels = maxLength;
@@ -1312,6 +1334,32 @@ namespace DinoLino.Utilities.Modes
         // Distinguishes a user keystroke/slider change (which should stick) from
         // the internal auto-default write (which should not count as manual).
         private bool _settingHarmonicsInternally;
+
+        // Which direction the normalization turns onto +X. The first harmonic needs
+        // nothing drawn beforehand; the drawn axis keeps the angle a specimen sits at
+        // relative to its own anatomy, which the first harmonic normalizes away.
+        private EfdRotationReference _efdRotation = EfdRotationReference.FirstHarmonic;
+
+        public EfdRotationReference EfdRotation
+        {
+            get => _efdRotation;
+            set => SetField(ref _efdRotation, value);
+        }
+
+        /// <summary>Switches the rotation reference from the control panel.</summary>
+        public void SelectRotationReference(string tag)
+        {
+            if (Enum.TryParse(tag, out EfdRotationReference reference)) EfdRotation = reference;
+        }
+
+        /// The direction of the specimen's +X axis for the normalizer, or null when it
+        /// has none. Canvas space, which is where the contour is measured: that and
+        /// image space differ by a uniform scale and a shift, neither of which turns
+        /// an angle.
+        private static double? DrawnAxisRadians() =>
+            ActiveAlignment.Current.IsAligned
+                ? ActiveAlignment.Current.RotationRadians
+                : (double?)null;
 
         public int EfdHarmonics
         {

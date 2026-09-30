@@ -617,6 +617,22 @@ namespace DinoLino
                 });
             }
 
+            // Said on the row rather than only in the specimen's own panel, because this
+            // is the one place the whole sample is visible at once: which specimens were
+            // measured and which were given another's scale is a question about the set.
+            if (specimen.Calibration.Inherited)
+            {
+                nameLine.Children.Add(new TextBlock
+                {
+                    Text = "  (scale inherited)",
+                    Opacity = 0.6,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "This specimen's scale was copied from another specimen, "
+                            + "not measured on its own image. Tools \u25b8 Scale \u25b8 Set Scale "
+                            + "replaces it with a measured one."
+                });
+            }
+
             text.Children.Add(nameLine);
 
             text.Children.Add(new TextBlock

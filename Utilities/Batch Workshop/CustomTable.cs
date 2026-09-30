@@ -24,13 +24,15 @@ namespace DinoLino.Utilities
 
         public static bool HasColumns => _columns.Count > 0;
 
-        public static bool IsSelected(WorkshopCategory category, string header) =>
-            Find(category, header) != null;
+        public static bool IsSelected(string header) => Find(header) != null;
+
+        /// <summary>The mode a selected variable is read from first, or null when it is not selected.</summary>
+        public static WorkshopCategory? CategoryOf(string header) => Find(header)?.Category;
 
         /// <summary>Adds a variable to the table, or takes it out when it is already there.</summary>
         public static void Toggle(WorkshopCategory category, string header)
         {
-            var existing = Find(category, header);
+            var existing = Find(header);
 
             if (existing != null) _columns.Remove(existing);
             else _columns.Add(new CustomTableColumn { Category = category, Header = header });
@@ -40,9 +42,12 @@ namespace DinoLino.Utilities
 
         public static void Clear() => _columns.Clear();
 
-        private static CustomTableColumn Find(WorkshopCategory category, string header) =>
-            _columns.FirstOrDefault(c => c.Category == category
-                                         && string.Equals(c.Header, header, StringComparison.OrdinalIgnoreCase));
+        // A variable more than one mode measures is one quantity under one name, so
+        // the name alone identifies it. The mode a column carries says which table to
+        // read it from first, not which variable it is.
+        private static CustomTableColumn Find(string header) =>
+            _columns.FirstOrDefault(c =>
+                string.Equals(c.Header, header, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -70,7 +75,7 @@ namespace DinoLino.Utilities
         };
 
         public static WorkshopTable Build(
-            UndoRedoManager undoRedo, string currentName, ScaleCalibration scale)
+            UndoRedoManager undoRedo, string currentName, ScaleSource scale)
         {
             var chosen = CustomTableSelection.Columns.ToList();
 
@@ -95,10 +100,14 @@ namespace DinoLino.Utilities
         /// be tabled.
         /// </summary>
         public static List<CustomTableGroup> Catalog(
-            UndoRedoManager undoRedo, string currentName, ScaleCalibration scale)
+            UndoRedoManager undoRedo, string currentName, ScaleSource scale)
         {
             var catalog = new List<CustomTableGroup>();
             if (undoRedo == null) return catalog;
+
+            // Names already spoken for, so a quantity two modes both measure is
+            // offered once rather than once per mode.
+            var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var category in Categories)
             {
@@ -110,9 +119,15 @@ namespace DinoLino.Utilities
                     string header = source.MeasurementHeaders[c];
 
                     // A variable already in the table keeps its place on the list even
-                    // once its measurements are gone, so it can be taken out again.
-                    if (HasValues(source, c) || CustomTableSelection.IsSelected(category, header))
-                        headers.Add(header);
+                    // once its measurements are gone, so it can be taken out again. That
+                    // place is under the mode it was taken from, so a mode with nothing
+                    // measured cannot hold the name open against one that has.
+                    if (!HasValues(source, c) && CustomTableSelection.CategoryOf(header) != category)
+                        continue;
+
+                    if (!listed.Add(header)) continue;
+
+                    headers.Add(header);
                 }
 
                 if (headers.Count > 0)
@@ -131,7 +146,7 @@ namespace DinoLino.Utilities
 
         private static void Fill(
             WorkshopTable table, IReadOnlyList<CustomTableColumn> chosen,
-            UndoRedoManager undoRedo, string currentName, ScaleCalibration scale)
+            UndoRedoManager undoRedo, string currentName, ScaleSource scale)
         {
             // One source table per mode the choice touches. All of them list the same
             // specimens in the same order, which is what lets their rows line up.
@@ -146,12 +161,58 @@ namespace DinoLino.Utilities
                 }
             }
 
-            // Where each chosen variable sits in the table it came from.
-            var positions = new int[chosen.Count];
-            for (int i = 0; i < chosen.Count; i++)
-                positions[i] = IndexOf(sources[chosen[i].Category], chosen[i].Header);
+            // A quantity two modes both measure is listed once and so is read from one
+            // of them, which would leave the other's rows blank. These extra tables
+            // answer that lookup. They are consulted for values only: how many rows a
+            // specimen gets is still settled by the modes actually chosen from.
+            var lookups = new Dictionary<WorkshopCategory, WorkshopTable>(sources);
 
-            int blockCount = sources.Values.Min(s => s.Blocks.Count);
+            foreach (var category in Categories)
+            {
+                if (lookups.ContainsKey(category)) continue;
+
+                var extra = WorkshopTables.Build(category, undoRedo, currentName, scale);
+                if (chosen.Any(c => IndexOf(extra, c.Header) >= 0)) lookups[category] = extra;
+            }
+
+            // Every table each chosen variable can be read from, its own mode first.
+            var readOrder = new List<WorkshopCategory>[chosen.Count];
+            var positions = new Dictionary<WorkshopCategory, int[]>();
+
+            foreach (var pair in lookups)
+            {
+                var found = new int[chosen.Count];
+                for (int i = 0; i < chosen.Count; i++)
+                    found[i] = IndexOf(pair.Value, chosen[i].Header);
+                positions[pair.Key] = found;
+            }
+
+            for (int i = 0; i < chosen.Count; i++)
+            {
+                var order = new List<WorkshopCategory> { chosen[i].Category };
+
+                // Walked in Categories order rather than the dictionary's, so the
+                // table a value comes from does not turn on hashing.
+                foreach (var category in Categories)
+                {
+                    if (category == chosen[i].Category) continue;
+                    if (lookups.ContainsKey(category) && positions[category][i] >= 0)
+                        order.Add(category);
+                }
+
+                readOrder[i] = order;
+            }
+
+            // Every mode that supplies one of the chosen variables. A row belongs in
+            // the table when any of these has an attempt for it, so a specimen measured
+            // only in the mode a shared variable was NOT taken from still shows it.
+            var contributing = new List<WorkshopCategory>();
+            foreach (var category in Categories)
+            {
+                if (readOrder.Any(o => o.Contains(category))) contributing.Add(category);
+            }
+
+            int blockCount = lookups.Values.Min(s => s.Blocks.Count);
 
             for (int b = 0; b < blockCount; b++)
             {
@@ -165,12 +226,12 @@ namespace DinoLino.Utilities
                     AllOperations = reference.AllOperations
                 };
 
-                // Rows of this specimen that hold an actual attempt, per source.
+                // Rows of this specimen that hold an actual attempt, per table.
                 var measured = new Dictionary<WorkshopCategory, int>();
-                foreach (var source in sources)
+                foreach (var source in lookups)
                     measured[source.Key] = Measured(source.Value.Blocks[b]);
 
-                int rowCount = measured.Values.Max();
+                int rowCount = contributing.Max(k => measured[k]);
 
                 if (rowCount == 0)
                 {
@@ -195,22 +256,37 @@ namespace DinoLino.Utilities
 
                     for (int i = 0; i < chosen.Count; i++)
                     {
-                        if (positions[i] < 0) continue;
+                        foreach (var category in readOrder[i])
+                        {
+                            int position = positions[category][i];
+                            if (position < 0) continue;
+                            if (a >= measured[category]) continue;
 
-                        if (a >= measured[chosen[i].Category]) continue;
+                            var sourceRow = lookups[category].Blocks[b].Rows[a];
+                            if (position >= sourceRow.Cells.Length) continue;
 
-                        var sourceRow = sources[chosen[i].Category].Blocks[b].Rows[a];
-                        if (positions[i] < sourceRow.Cells.Length)
-                            row.Cells[i] = sourceRow.Cells[positions[i]] ?? "";
+                            // A blank is not an answer: within one mode a shared
+                            // variable sits on one kind of operation only, so the rows
+                            // holding the other kinds leave it empty and the mode that
+                            // does carry it for this row answers instead. Every value
+                            // still belongs to an operation of this same row.
+                            string cell = sourceRow.Cells[position];
+                            if (string.IsNullOrEmpty(cell)) continue;
+
+                            row.Cells[i] = cell;
+                            break;
+                        }
                     }
 
                     // The operations standing behind the row, so the table can tell a
-                    // row of measurements from a row of blanks.
-                    foreach (var source in sources)
+                    // row of measurements from a row of blanks. Taken from the same
+                    // modes the values were, so a row is never backed by less than what
+                    // put it there.
+                    foreach (var category in contributing)
                     {
-                        if (a >= measured[source.Key]) continue;
+                        if (a >= measured[category]) continue;
 
-                        foreach (var operation in source.Value.Blocks[b].Rows[a].Operations)
+                        foreach (var operation in lookups[category].Blocks[b].Rows[a].Operations)
                         {
                             if (!row.Operations.Contains(operation)) row.Operations.Add(operation);
                         }

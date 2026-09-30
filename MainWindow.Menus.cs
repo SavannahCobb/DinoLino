@@ -1,6 +1,8 @@
 ﻿using DinoLino.Utilities;
 using DinoLino.Utilities.Modes;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -19,8 +21,12 @@ namespace DinoLino
 
         private void Menu_About(object sender, RoutedEventArgs e)
         {
+            // Set here rather than left to PopupChrome: a window shown with
+            // ShowDialog is modal before its Loaded handler runs, and WPF will not
+            // take an owner after that.
             var about = new AboutWindow
             {
+                Owner = this,
                 FontSize = _currentFontSize,
                 FontFamily = _currentFont
             };
@@ -31,6 +37,7 @@ namespace DinoLino
         {
             var userguide = new UserGuideWindow
             {
+                Owner = this,
                 FontFamily = _currentFont,
                 FontSize = _currentFontSize
             };
@@ -72,7 +79,7 @@ namespace DinoLino
 
         private void Menu_SeeHistory(object sender, RoutedEventArgs e)
         {
-            var window = new GeomOpHistoryWindow(UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration)
+            var window = new GeomOpHistoryWindow(UndoRedoManager, SpecimenManager.DisplayName, TableScales())
             {
                 Owner = this,
                 FontSize = _currentFontSize,
@@ -86,7 +93,7 @@ namespace DinoLino
             GeomOpHistoryWindow.ExportAllOperationHistory(
                 UndoRedoManager,
                 SpecimenManager.DisplayName,
-                ScaleCalibration);
+                TableScales());
         }
 
         // ---- Image cache ----
@@ -146,6 +153,131 @@ namespace DinoLino
             BeginScaleCapture();
         }
 
+
+        // ---- Passing one specimen's scale to others ----
+
+        /// A standing answer to the overwrite question, for a user who has asked to stop
+        /// being asked. Ask is the state in which the question is still put.
+        private ScaleOverwriteAnswer _scaleOverwrite = ScaleOverwriteAnswer.Ask;
+
+        /// Both items need a scale to pass on, and the second needs somewhere to pass it
+        /// to. The ticks in Directory ▸ Sample change without announcing it, so what is
+        /// on offer is worked out as the submenu opens rather than kept in step with them.
+        private void MenuScale_SubmenuOpened(object sender, RoutedEventArgs e)
+        {
+            bool haveScale = ScaleCalibration.IsCalibrated;
+
+            UI_MenuApplyScaleAll.IsEnabled = haveScale && ScaleTargetsAll().Count > 0;
+            UI_MenuApplyScaleSelected.IsEnabled = haveScale && ScaleTargetsTicked().Count > 0;
+
+            UI_MenuApplyScaleSelected.ToolTip = !haveScale
+                ? "Set a scale on this specimen first."
+                : ScaleTargetsTicked().Count > 0
+                    ? "Give this specimen's scale to the ones ticked in Directory ▸ Sample."
+                    : "Tick the specimens in Directory ▸ Sample first.";
+
+            UI_MenuApplyScaleAll.ToolTip = haveScale
+                ? "Give every other specimen this specimen's scale. Anything already measured on its own image is asked about first."
+                : "Set a scale on this specimen first.";
+        }
+
+        private void Menu_ApplyScaleAll(object sender, RoutedEventArgs e)
+            => ApplyScaleToSpecimens(ScaleTargetsAll());
+
+        private void Menu_ApplyScaleSelected(object sender, RoutedEventArgs e)
+            => ApplyScaleToSpecimens(ScaleTargetsTicked());
+
+        /// Every specimen that could take a scale: one that stands for a picture, has not
+        /// been deleted, and is not the one the scale is coming from. Copying onto the
+        /// source would mark its own measured scale as borrowed.
+        private List<Specimen> ScaleTargetsAll() =>
+            SpecimenManager.Specimens
+                .Where(s => s != null
+                         && s.FileName != null
+                         && !s.Deleted
+                         && !ReferenceEquals(s, SpecimenManager.CurrentSpecimen))
+                .ToList();
+
+        /// <summary>The same, narrowed to what is ticked in Directory ▸ Sample.</summary>
+        private List<Specimen> ScaleTargetsTicked() =>
+            ScaleTargetsAll().Where(_sampleChecked.Contains).ToList();
+
+        /// Gives the loaded specimen's scale to the specimens named, marked as inherited
+        /// so it stays clear which specimens were actually measured.
+        private void ApplyScaleToSpecimens(List<Specimen> targets)
+        {
+            var source = ScaleCalibration.State;
+            if (!source.IsSet || targets == null || targets.Count == 0) return;
+
+            // A scale measured on a specimen's own image is a reading somebody took, so it
+            // is not written over without being asked about. One already borrowed is.
+            var measured = targets
+                .Where(t => t.Calibration.IsSet && !t.Calibration.Inherited)
+                .ToList();
+
+            var answer = _scaleOverwrite;
+
+            if (measured.Count > 0 && answer == ScaleOverwriteAnswer.Ask)
+            {
+                bool remember;
+
+                var asked = ScaleApplyWindow.Ask(
+                    this, SpecimenManager.NameOf(SpecimenManager.CurrentSpecimen),
+                    source, targets.Count, measured.Count, _currentFont, _currentFontSize,
+                    out remember);
+
+                // Cancelled: not one specimen is touched.
+                if (asked == null) return;
+
+                answer = asked.Value;
+                if (remember) _scaleOverwrite = answer;
+            }
+
+            var taking = answer == ScaleOverwriteAnswer.Overwrite
+                ? targets
+                : targets.Where(t => !measured.Contains(t)).ToList();
+
+            var borrowed = source.AsInherited();
+            int changed = 0;
+
+            foreach (var target in taking)
+            {
+                if (target.Calibration == borrowed) continue;
+
+                target.Calibration = borrowed;
+                changed++;
+            }
+
+            if (changed > 0) ProjectSession.MarkChanged();
+
+            // The roster is where an inherited scale is read off, so it is redrawn if the
+            // user is looking at it. It is rebuilt on its own when that tab is opened.
+            if (_sampleTabSelected) RebuildSampleList();
+
+            ReportScaleApplied(changed, taking.Count, targets.Count - taking.Count);
+        }
+
+        private void ReportScaleApplied(int changed, int applied, int kept)
+        {
+            string what = changed == 0
+                ? applied == 0
+                    ? "No specimen took the scale."
+                    : "Every specimen chosen already had this scale."
+                : changed == 1
+                    ? "1 specimen took this specimen's scale."
+                    : changed + " specimens took this specimen's scale.";
+
+            if (kept > 0)
+            {
+                what += kept == 1
+                    ? "\n\n1 specimen kept the scale measured on its own image."
+                    : "\n\n" + kept + " specimens kept the scale measured on their own images.";
+            }
+
+            MessageBox.Show(this, what, "Apply Scale",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         // ---- Alignment ----
 
         /// Arms the axis-drawing capture (Tools ▸ Align Image, and the control
@@ -167,7 +299,7 @@ namespace DinoLino
             UI_MenuAlignImage.IsEnabled = enabled;
             UI_AlignButton.IsEnabled = enabled;
 
-            UI_MenuSetScale.IsEnabled = enabled;
+            UI_MenuScale.IsEnabled = enabled;
             UI_ScaleButton.IsEnabled = enabled;
 
             UI_MenuScreenshot.IsEnabled = enabled;
@@ -309,6 +441,14 @@ namespace DinoLino
         private void Menu_SeeImageAxes(object sender, RoutedEventArgs e)
         {
             SetImageAxesVisible(UI_SeeImageAxes.IsChecked);
+        }
+
+        /// Toggles the scalebar. The overlay itself lives in the calibration file,
+        /// which owns UpdateScaleBarVisibility and decides whether the bar can be shown
+        /// at all.
+        private void Menu_ViewScaleBar(object sender, RoutedEventArgs e)
+        {
+            UpdateScaleBarVisibility();
         }
 
         /// Toggles the mini-map overview panel. The panel itself lives in

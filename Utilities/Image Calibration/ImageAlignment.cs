@@ -29,10 +29,32 @@ namespace DinoLino.Utilities
 
         private static ImageAlignment _current;
 
+        /// Raised when the live orientation changes, whether an axis was drawn, an
+        /// axis was cleared, or a specimen carrying a different one arrived. Anything
+        /// that reports the frame its numbers are taken in listens here, since nothing
+        /// else tells it the frame has moved.
+        public static event Action Changed;
+
         /// <summary>Supplies MainWindow's alignment. Call once at startup.</summary>
-        public static void Bind(ImageAlignment alignment) => _current = alignment;
+        public static void Bind(ImageAlignment alignment)
+        {
+            if (ReferenceEquals(_current, alignment)) return;
+
+            if (_current != null) _current.PropertyChanged -= Relay;
+            _current = alignment;
+            if (_current != null) _current.PropertyChanged += Relay;
+
+            Changed?.Invoke();
+        }
 
         public static ImageAlignment Current => _current ?? _unset;
+
+        // State covers both a new orientation and a rebind to another specimen, and
+        // is raised for each, so it is the one property worth passing on.
+        private static void Relay(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ImageAlignment.State)) Changed?.Invoke();
+        }
     }
     /// <summary>Which of the specimen's two axes the user drew.</summary>
     public enum AlignmentAxis { X, Y }

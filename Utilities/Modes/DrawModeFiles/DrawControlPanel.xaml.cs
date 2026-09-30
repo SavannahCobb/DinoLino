@@ -10,8 +10,12 @@ namespace DinoLino.Utilities.Modes
 
         public DrawControlPanel(DrawMode mode)
         {
-            InitializeComponent();
+            // Before the XAML is loaded, not after: a button that starts out chosen
+            // raises its Checked while the panel is still being built, and the handler
+            // that answers it has nothing to tell until the mode is in hand.
             _mode = mode;
+
+            InitializeComponent();
             DataContext = mode;
         }
 
@@ -23,6 +27,12 @@ namespace DinoLino.Utilities.Modes
         private void Shape_Checked(object sender, RoutedEventArgs e)
         {
             if (sender is RadioButton rb) _mode.SelectShape(rb.Tag?.ToString());
+        }
+
+        private void LabelKind_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_mode != null && sender is RadioButton rb)
+                _mode.SelectLabelKind(rb.Tag?.ToString());
         }
 
         private void LineConstraint_Checked(object sender, RoutedEventArgs e)

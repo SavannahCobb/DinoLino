@@ -4,6 +4,7 @@ using DinoLino.Utilities.Modes;
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -30,8 +31,23 @@ namespace DinoLino
 
         private void MainWindow_KeyDown(object sender, KeyEventArgs e)
         {
+            // These arrive before the focused control sees them, so a box being typed in
+            // would lose its own keys: Ctrl+C would clear the specimen rather than copy,
+            // Ctrl+Z would undo a measurement rather than the typing, and the arrow keys
+            // would change specimen rather than move the caret. Only those keys stand
+            // aside, though: a box makes no claim on Save, Open or Escape, and standing
+            // aside for all of them left a note with no way to save what was typed in it.
+            var focusedBox = Keyboard.FocusedElement as TextBoxBase;
+            bool typing = focusedBox != null;
+
+            // A label written on the picture is the one box that has to let undo through
+            // to the history, and only it: the panel and name boxes are ordinary fields,
+            // where a keystroke past the end of their own undo would quietly take away a
+            // measurement the user is not even looking at.
+            bool inLabel = typing && UI_LabelCanvas != null && UI_LabelCanvas.IsKeyboardFocusWithin;
+
             // Specimen navigation: plain Up/Down only.
-            if (Keyboard.Modifiers == ModifierKeys.None)
+            if (!typing && Keyboard.Modifiers == ModifierKeys.None)
             {
                 if (e.Key == Key.Up)
                 {
@@ -48,7 +64,8 @@ namespace DinoLino
                 }
             }
 
-            if ((e.Key == Key.Left || e.Key == Key.Right)
+            if (!typing
+                && (e.Key == Key.Left || e.Key == Key.Right)
                 && Keyboard.Modifiers == ModifierKeys.None
                 && UI_WorkCanvas.IsKeyboardFocusWithin)
             {
@@ -58,7 +75,8 @@ namespace DinoLino
 
             // Space presses and holds the left mouse button, so the workspace can be
             // clicked and dragged without a mouse.
-            if (e.Key == Key.Space
+            if (!typing
+                && e.Key == Key.Space
                 && Keyboard.Modifiers == ModifierKeys.None
                 && UI_WorkCanvas.IsKeyboardFocusWithin)
             {
@@ -67,13 +85,12 @@ namespace DinoLino
                 return;
             }
 
-            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.C)
+            if (!typing && Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.C)
             {
-                ClearAllOperations();
-            }
-            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.C)
-            {
-                ClearAllOperations();
+                // Through the button's own handler, so the attempt counter, the Clear
+                // Specimen button and the Plot tab are brought up to date with it.
+                GlobalTools_ClearSpecimen(this, new RoutedEventArgs());
+                e.Handled = true;
             }
 
             if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
@@ -126,13 +143,19 @@ namespace DinoLino
                 e.Handled = true;
             }
 
-            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z)
+            // Undo and redo stand aside while a box has something of its own to give
+            // back. A label just placed is empty and holds the caret, and that is the
+            // moment one placed by accident is undone: with nothing in the box to undo,
+            // the keystroke belongs to the history.
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z
+                && (!typing || (inLabel && !focusedBox.CanUndo)))
             {
                 Menu_Undo(this, new RoutedEventArgs());
                 e.Handled = true;
             }
 
-            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Y)
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Y
+                && (!typing || (inLabel && !focusedBox.CanRedo)))
             {
                 Menu_Redo(this, new RoutedEventArgs());
                 e.Handled = true;
@@ -421,6 +444,13 @@ namespace DinoLino
                 return;
             }
 
+            // A press that reaches this far is a press on the picture: an armed label
+            // answers its own before this runs. So the keyboard comes back from any label
+            // that was holding it, which both closes that label and lets the window's
+            // shortcuts read again; a caret left in a label kills both silently.
+            if (UI_LabelCanvas != null && UI_LabelCanvas.IsKeyboardFocusWithin)
+                UI_WorkCanvas.Focus();
+
             if (_scaleMode)
             {
                 HandleScaleClick(new Vector2(Mouse.GetPosition(UI_WorkCanvas)));
@@ -430,6 +460,21 @@ namespace DinoLino
             if (AlignCaptureClick(new Vector2(Mouse.GetPosition(UI_WorkCanvas)))) return;
 
             Vector2 mousePos = new Vector2(Mouse.GetPosition(UI_WorkCanvas));
+
+            // A label is put on the picture rather than measured on it, so it is answered
+            // before the drawing router and before the clear a new operation brings with
+            // it: placing one leaves the drawings where they are.
+            // Every button and every click count, not just the single left click that
+            // adds one: a second click or a right click falling through to the router
+            // below would count as starting an operation and take the drawn ones with it.
+            if (CurrentWorkMode is DrawMode labelDm && labelDm.IsTextSelected)
+            {
+                if (e.ChangedButton == MouseButton.Left && e.ClickCount == 1)
+                    AddLabel(mousePos, labelDm.CurrentLabelKind);
+
+                e.Handled = true;
+                return;
+            }
 
             if (CurrentWorkMode is OutlineMode)
                 SyncOutlineImageTransform();

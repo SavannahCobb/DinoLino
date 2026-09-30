@@ -182,7 +182,7 @@ namespace DinoLino
             if (UndoRedoManager == null) return;
 
             GeomOpHistoryWindow.ExportWorkshopCsv(
-                category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                category, UndoRedoManager, SpecimenManager.DisplayName, TableScales());
         }
 
         /// Writes one xlsx holding the tables staged in the History window, or every
@@ -192,7 +192,7 @@ namespace DinoLino
             if (UndoRedoManager == null) return;
 
             GeomOpHistoryWindow.ExportAllGeometricData(
-                UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                UndoRedoManager, SpecimenManager.DisplayName, TableScales());
         }
 
         // =====================
@@ -228,7 +228,7 @@ namespace DinoLino
         {
             if (UndoRedoManager == null) return false;
 
-            var groups = WorkshopTables.ColumnGroups(category, UndoRedoManager, ScaleCalibration);
+            var groups = WorkshopTables.ColumnGroups(category, UndoRedoManager, TableScales());
 
             foreach (var record in UndoRedoManager.Archive)
             {
@@ -310,7 +310,7 @@ namespace DinoLino
             if (UndoRedoManager == null) return;
 
             var window = new WorkshopEditWindow(
-                category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration)
+                category, UndoRedoManager, SpecimenManager.DisplayName, TableScales())
             {
                 Owner = this,
                 FontSize = _currentFontSize,

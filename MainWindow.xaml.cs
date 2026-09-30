@@ -85,6 +85,12 @@ namespace DinoLino
         // Shared image scaling state used by all work modes.
         public ScaleCalibration ScaleCalibration = new ScaleCalibration();
 
+        /// The calibrations a table is to be read with, one specimen at a time. A table
+        /// spans specimens and they need not be scaled alike, so the builders are handed
+        /// this rather than the loaded specimen's calibration: each block is converted and
+        /// labelled with the scale measured against its own image.
+        public ScaleSource TableScales() => new ScaleSource(SpecimenManager, ScaleCalibration);
+
         // Shared axis alignment for the loaded specimen.
         public ImageAlignment ImageAlignment = new ImageAlignment();
 
@@ -278,6 +284,18 @@ namespace DinoLino
             // The image is stretched to fit, so its displayed size — and with it the
             // canvas coordinate space — changes whenever the workspace is laid out.
             UI_WorkImage.SizeChanged += (s, e) => SyncOutlineImageTransform();
+
+            // Labels are kept in the operation history, and every change to it raises
+            // this, so one subscription covers adding, deleting, undoing, redoing,
+            // clearing and changing specimen.
+            UndoRedoManager.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(UndoRedoManager.CanUndo)) RefreshLabels();
+            };
+
+            // How much room the scalebar has is the workspace's width, which a letterboxed
+            // image can leave unchanged as the window widens, so it is watched separately.
+            UI_WorkSpace.SizeChanged += (s, e) => RedrawScaleBar();
 
             // Cursor used by tools that need a visible point marker.
             UI_DotCursor = new Ellipse

@@ -106,12 +106,16 @@ namespace DinoLino
         {
             UI_WorkImage.ZoomElement(delta, relativeTo);
             UI_WorkBorder.CopyTransforms(UI_WorkImage);
+
+            // The bar is a length on screen, so magnifying the image lengthens it.
+            RedrawScaleBar();
         }
 
         private void ResetWorkSpaceZoom()
         {
             UI_WorkImage.ResetZoom();
             UI_WorkBorder.CopyTransforms(UI_WorkImage);
+            RedrawScaleBar();
         }
 
         // =====================
@@ -293,6 +297,10 @@ namespace DinoLino
                 }
             }
 
+            // The labels are placed from the mapping above, so they follow it whenever
+            // the picture is laid out at a different size.
+            RepositionLabels();
+
             if (ScaleCalibration.UpdateViewScale(displayW / WorkingImage.PixelWidth))
                 RefreshAllScalePlaceholders();
         }
@@ -324,6 +332,11 @@ namespace DinoLino
                 return;
             }
 
+            // Read before the picture is replaced: the labels are carried through the
+            // same turn, and that needs the size they were placed against.
+            double turnedFromWidth = WorkingImage.PixelWidth;
+            double turnedFromHeight = WorkingImage.PixelHeight;
+
             var transformed = new TransformedBitmap(WorkingImage, transform);
 
             // Re-encode the transformed bitmap so it can be cached and reused like a normal image source.
@@ -354,6 +367,12 @@ namespace DinoLino
             ResetWorkSpaceZoom();
             ImageAlignment.Clear();
             ClearWorkspace();
+
+            // The drawn operations go with the turn; the labels are carried through it,
+            // since a label left at its old coordinates would sit on screen naming the
+            // wrong feature rather than simply disappearing.
+            MoveLabelsThrough(transform, turnedFromWidth, turnedFromHeight);
+
             RefreshAllScalePlaceholders();
 
             OutlineMode.SourceImage = WorkingImage;
@@ -440,10 +459,15 @@ namespace DinoLino
             var cursorVis = UI_DotCursor.Visibility;
             var ringVis = _brushRing != null ? _brushRing.Visibility : Visibility.Collapsed;
 
+            // The bar belongs in the picture; the grip for resizing it does not.
+            var gripVis = UI_ScaleBarGrip.Visibility;
+
             try
             {
                 UI_DotCursor.Visibility = Visibility.Collapsed;
                 if (_brushRing != null) _brushRing.Visibility = Visibility.Collapsed;
+                UI_ScaleBarGrip.Visibility = Visibility.Collapsed;
+                SyncLabelChrome(hideAll: true);
                 UI_WorkSpace.UpdateLayout();
 
                 var rtb = new RenderTargetBitmap(
@@ -457,6 +481,8 @@ namespace DinoLino
             {
                 UI_DotCursor.Visibility = cursorVis;   // Restore the cursor even if rendering fails.
                 if (_brushRing != null) _brushRing.Visibility = ringVis;
+                UI_ScaleBarGrip.Visibility = gripVis;
+                SyncLabelChrome(hideAll: false);
                 UI_WorkSpace.UpdateLayout();
             }
         }
@@ -666,6 +692,18 @@ namespace DinoLino
 
         private void RefreshAllScalePlaceholders()
         {
+            // Everything the bar turns on arrives here: a specimen loaded, a
+            // calibration measured or lost, a window resized, an image turned. Whether
+            // the bar can be shown at all moves with the scale, so that is settled here
+            // too rather than only redrawn.
+            UpdateScaleBarVisibility();
+
+            // Whether a specimen's scale was measured or passed on is read off the
+            // roster, so the roster is redrawn from here too: this is the one place
+            // every change of calibration arrives at, and the mark would otherwise
+            // stay as it was until something unrelated rebuilt the list.
+            if (_sampleTabSelected) RebuildSampleList();
+
             if (AllWorkModes == null) return;
             foreach (var mode in AllWorkModes)
                 mode.RefreshScalePlaceholders();

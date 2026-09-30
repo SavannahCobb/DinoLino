@@ -19,7 +19,7 @@ namespace DinoLino.Utilities
         private readonly WorkshopCategory _category;
         private readonly UndoRedoManager _undoRedo;
         private readonly string _currentName;
-        private readonly ScaleCalibration _scale;
+        private readonly ScaleSource _scale;
 
         private readonly StackPanel _body = new StackPanel();
         private readonly List<WorkOperation> _removed = new List<WorkOperation>();
@@ -34,7 +34,7 @@ namespace DinoLino.Utilities
         public IReadOnlyList<WorkOperation> RemovedOperations => _removed;
 
         public WorkshopEditWindow(
-            WorkshopCategory category, UndoRedoManager undoRedo, string currentName, ScaleCalibration scale)
+            WorkshopCategory category, UndoRedoManager undoRedo, string currentName, ScaleSource scale)
         {
             _category = category;
             _undoRedo = undoRedo;

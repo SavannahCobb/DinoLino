@@ -324,7 +324,8 @@ namespace DinoLino.Utilities
             {
                 element.Add(new XElement("scale",
                     new XAttribute("unitsPerImagePixel", Text(specimen.Calibration.UnitsPerImagePixel)),
-                    new XAttribute("unit", specimen.Calibration.Unit ?? "")));
+                    new XAttribute("unit", specimen.Calibration.Unit ?? ""),
+                    new XAttribute("inherited", specimen.Calibration.Inherited)));
             }
 
             if (specimen.Alignment.IsSet)
@@ -409,6 +410,15 @@ namespace DinoLino.Utilities
                 return element;
             }
 
+            var axisAngle = operation as AxisAngleOperation;
+            if (axisAngle != null)
+            {
+                element.Add(new XAttribute("type", "AxisAngle"));
+                element.Add(new XAttribute("axisAngle", Text(axisAngle.AxisAngleDegrees)));
+                element.Add(new XAttribute("aligned", axisAngle.MeasuredAgainstAxis));
+                return element;
+            }
+
             var shape = operation as ShapeOperation;
             if (shape != null)
             {
@@ -430,6 +440,20 @@ namespace DinoLino.Utilities
                 element.Add(new XAttribute("heading", Text(line.HeadingDegrees)));
                 element.Add(new XAttribute("lengthRatio", Text(line.LineLengthRatio)));
                 element.Add(new XAttribute("angle", Text(line.LineAngle)));
+                element.Add(new XAttribute("aligned", line.MeasuredAgainstAxis));
+                return element;
+            }
+
+            var note = operation as AnnotationOperation;
+            if (note != null)
+            {
+                element.Add(new XAttribute("type", "Annotation"));
+                element.Add(new XAttribute("mark", note.Kind.ToString()));
+                element.Add(new XAttribute("text", note.Text ?? ""));
+                element.Add(new XAttribute("x", Text(note.ImageX)));
+                element.Add(new XAttribute("y", Text(note.ImageY)));
+                element.Add(new XAttribute("size", Text(note.Size)));
+                element.Add(new XAttribute("font", note.FontName ?? ""));
                 return element;
             }
 
@@ -629,9 +653,13 @@ namespace DinoLino.Utilities
             var scale = element.Element("scale");
             if (scale != null)
             {
+                // A project saved before a scale could be passed between specimens says
+                // nothing about where this one came from, and every scale in it was
+                // measured on the image it belongs to.
                 specimen.Calibration = ScaleState.FromUnitsPerImagePixel(
                     Number(scale.Attribute("unitsPerImagePixel"), 0),
-                    Value(scale.Attribute("unit")));
+                    Value(scale.Attribute("unit")),
+                    Flag(scale.Attribute("inherited")));
             }
 
             var alignment = element.Element("alignment");
@@ -824,6 +852,14 @@ namespace DinoLino.Utilities
                     };
                     break;
 
+                case "AxisAngle":
+                    operation = new AxisAngleOperation
+                    {
+                        AxisAngleDegrees = Number(element.Attribute("axisAngle"), 0),
+                        MeasuredAgainstAxis = Flag(element.Attribute("aligned"))
+                    };
+                    break;
+
                 case "Shape":
                     {
                         DrawMode.ShapeConstraint kind;
@@ -840,6 +876,24 @@ namespace DinoLino.Utilities
                         break;
                     }
 
+                // "Text" is what a label was written as when words were all one could be.
+                case "Annotation":
+                case "Text":
+                    {
+                        var mark = ReadAnnotationKind(element.Attribute("mark"));
+
+                        operation = new AnnotationOperation
+                        {
+                            Kind = mark,
+                            Text = Value(element.Attribute("text")),
+                            ImageX = Number(element.Attribute("x"), 0),
+                            ImageY = Number(element.Attribute("y"), 0),
+                            Size = ReadAnnotationSize(element),
+                            FontName = Value(element.Attribute("font"))
+                        };
+                        break;
+                    }
+
                 case "Line":
                     operation = new LineOperation
                     {
@@ -848,7 +902,8 @@ namespace DinoLino.Utilities
                         LineDeltaYImagePixels = Number(element.Attribute("deltaY"), 0),
                         HeadingDegrees = Number(element.Attribute("heading"), 0),
                         LineLengthRatio = ReadNumberOrText(element.Attribute("lengthRatio")),
-                        LineAngle = ReadNumberOrText(element.Attribute("angle"))
+                        LineAngle = ReadNumberOrText(element.Attribute("angle")),
+                        MeasuredAgainstAxis = Flag(element.Attribute("aligned"))
                     };
                     break;
 
@@ -930,6 +985,23 @@ namespace DinoLino.Utilities
             Text(value.X) + "," + Text(value.Y) + "," + Text(value.Z) + "," + Text(value.W);
 
         private static string Value(XAttribute attribute) => attribute == null ? "" : attribute.Value;
+
+        /// Which of the three a label is. A project saved when words were all a label
+        /// could be says nothing about it, and words is what it holds.
+        private static AnnotationKind ReadAnnotationKind(XAttribute attribute) =>
+            Enum.TryParse(Value(attribute), out AnnotationKind kind)
+                ? kind
+                : AnnotationKind.Text;
+
+        /// How large a label is drawn. The size went under another name in the build that
+        /// first allowed it, and in the ones before that every label was drawn at 13 and
+        /// carried no size at all, which is what a project from then is read back at: a
+        /// label already written keeps the size it was written at.
+        private static double ReadAnnotationSize(XElement element)
+        {
+            var attribute = element.Attribute("size") ?? element.Attribute("fontSize");
+            return Number(attribute, 13.0);
+        }
 
         private static bool Flag(XAttribute attribute)
         {

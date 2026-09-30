@@ -40,7 +40,7 @@ namespace DinoLino
         {
             if (UndoRedoManager == null) return;
 
-            int nCirc = 0, nPara = 0, nSpline = 0, nAngle = 0, nLine = 0, nOutline = 0;
+            int nCirc = 0, nPara = 0, nSpline = 0, nAngle = 0, nLine = 0, nOutline = 0, nAxis = 0;
             int nRect = 0, nSqr = 0, nEllipse = 0, nCircle = 0;
 
             foreach (var op in UndoRedoManager.History)
@@ -49,6 +49,7 @@ namespace DinoLino
                 else if (op is ParabolaOperation) nPara++;
                 else if (op is SplineOperation) nSpline++;
                 else if (op is GetAngleOperation) nAngle++;
+                else if (op is AxisAngleOperation) nAxis++;
                 else if (op is LineOperation) nLine++;
                 else if (op is OutlineOperation o && o.HasMetadata) nOutline++;
                 else if (op is ShapeOperation shape)
@@ -69,6 +70,7 @@ namespace DinoLino
             any |= ShowCount(UI_AttemptPara, "n_para", nPara);
             any |= ShowCount(UI_AttemptSpline, "n_spline", nSpline);
             any |= ShowCount(UI_AttemptAngle, "n_angle", nAngle);
+            any |= ShowCount(UI_AttemptAxis, "n_axis", nAxis);
 
             any |= ShowCount(UI_AttemptRect, "n_rect", nRect);
             any |= ShowCount(UI_AttemptSquare, "n_sqr", nSqr);
