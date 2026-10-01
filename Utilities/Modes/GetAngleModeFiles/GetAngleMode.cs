@@ -495,7 +495,7 @@ namespace DinoLino.Utilities.Modes
 
         private static readonly string[] AxisAngleTips = BuildTips(
             "💡 Click two points along a feature to measure the direction it points.",
-            "💡 Set the specimen's axis first with Tools > Align Image, or the angle is measured from the image instead.");
+            "💡 Set the specimen's axis first with Tools > Align > Align Specimen, or the angle is measured from the image instead.");
 
         public override string[] GetTips() => IsAxisAngleSelected ? AxisAngleTips : TriangleTips;
 

@@ -423,7 +423,7 @@ namespace DinoLino
         }
 
         /// Drops the staged PCA variables and any result fitted from them. Used by
-        /// Clear All, since both describe data that no longer exists.
+        /// File ▸ New Project, since both describe data that no longer exists.
         internal void ClearPcaAnalysis()
         {
             _pcaDataFrame.Clear();

@@ -52,7 +52,7 @@ namespace DinoLino.Utilities
         /// Returns 0 if the bisector is effectively zero (flat arc).
         public static double CircularArcAspectRatio(double chordLength, double bisectorLength)
         {
-            return bisectorLength > 1e-5 ? Math.Round(chordLength / bisectorLength, 2) : 0;
+            return bisectorLength > 1e-5 ? Math.Round(bisectorLength / chordLength, 2) : 0;
         }
 
         /// Parabolic rise-span ratio: rise / span (chord length).

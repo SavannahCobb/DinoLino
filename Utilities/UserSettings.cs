@@ -63,6 +63,12 @@ namespace DinoLino.Utilities
         public string FontFamily { get; set; } = "Arial";
         public double FontSize { get; set; } = 14;
 
+        /// Whether Clear Specimen Measurements still stops to ask. Turned off by the
+        /// prompt's own "do not ask again", because measuring a large sample means
+        /// clearing specimens often and a dialog in that path costs more than it saves.
+        /// File ▸ Restore Default Settings brings the question back.
+        public bool AskBeforeClearSpecimen { get; set; } = true;
+
         /// A standing answer to the question Tools ▸ Scale ▸ Apply Scale puts when a
         /// specimen it would write over already has a scale measured on its own image.
         /// Ask is the state in which the question is still put, and the one a program
@@ -125,6 +131,8 @@ namespace DinoLino.Utilities
             settings.FontFamily = ReadString(values, "FontFamily", settings.FontFamily);
             settings.FontSize = ReadFontSize(values, settings.FontSize);
             settings.ScaleOverwrite = ReadScaleOverwrite(values, settings.ScaleOverwrite);
+            settings.AskBeforeClearSpecimen =
+                ReadBool(values, "AskBeforeClearSpecimen", settings.AskBeforeClearSpecimen);
 
             return settings;
         }
@@ -254,6 +262,7 @@ namespace DinoLino.Utilities
             Write(text, "FontFamily", FontFamily);
             Write(text, "FontSize", FontSize);
             Write(text, "ScaleOverwrite", ScaleOverwrite.ToString());
+            Write(text, "AskBeforeClearSpecimen", AskBeforeClearSpecimen);
 
             return text.ToString();
         }

@@ -176,6 +176,15 @@ namespace DinoLino.Utilities
                 : new List<string>();
         }
 
+        /// Brings one column back, so a column hidden by mistake can be recovered
+        /// without also un-hiding the ones that were hidden on purpose.
+        public static void Show(string table, string column)
+        {
+            HashSet<string> columns;
+            if (_hidden.TryGetValue(table, out columns) && columns.Remove(column))
+                ProjectSession.MarkChanged();
+        }
+
         public static void Restore(string table)
         {
             if (_hidden.Remove(table)) ProjectSession.MarkChanged();
@@ -505,7 +514,7 @@ namespace DinoLino.Utilities
             {
                 case WorkshopCategory.Curvature: return "Curvature Data";
                 case WorkshopCategory.Angle: return "Angle Data";
-                case WorkshopCategory.Shape: return "Shape Data";
+                case WorkshopCategory.Shape: return "Draw Data";
                 case WorkshopCategory.OutlineMetadata: return "Outline Metadata";
                 case WorkshopCategory.Efa: return "EFA Data";
                 default: return "2D Outlines";
@@ -518,7 +527,7 @@ namespace DinoLino.Utilities
             {
                 case WorkshopCategory.Curvature: return "curvature_data.csv";
                 case WorkshopCategory.Angle: return "angle_data.csv";
-                case WorkshopCategory.Shape: return "shape_data.csv";
+                case WorkshopCategory.Shape: return "draw_data.csv";
                 case WorkshopCategory.OutlineMetadata: return "outline_metadata.csv";
                 case WorkshopCategory.Efa: return "efa_data.csv";
                 default: return "outlines.csv";
@@ -535,7 +544,7 @@ namespace DinoLino.Utilities
         // spline_ for curvature; tri_ for triangles; rect_, sqr_, ellipse_ and circ_
         // for the four drawn shapes; line_ for lines; outline_ and efa_ for outlines.
         // Note circ_ means the circular arc in the Curvature table and the drawn
-        // circle in the Shape table — separate tables, so the names never meet.
+        // circle in the Draw table — separate tables, so the names never meet.
         //
         // Every length and area reaching FmtLength or FmtArea is in image pixels,
         // which is what those two expect.

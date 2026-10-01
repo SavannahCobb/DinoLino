@@ -34,7 +34,7 @@ namespace DinoLino
         ///
         /// Drawn shapes are tallied per kind rather than lumped together, so the
         /// counter answers "how many ellipses have I traced on this specimen" — the
-        /// same question the Shape Data table's Attempt column answers.
+        /// same question the Draw Data table's Attempt column answers.
         /// </remarks>
         private void UpdateAttemptCounter()
         {

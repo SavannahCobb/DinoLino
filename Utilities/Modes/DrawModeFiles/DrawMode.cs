@@ -727,13 +727,13 @@ namespace DinoLino
         // =====================
         // Labels (Draw mode, Add Label)
         // =====================
-        // A label is kept in the operation history, so Undo, Redo, Clear All and the
-        // per-specimen archive all reach it without a second mechanism behind them. It is
-        // drawn on UI_LabelCanvas rather than UI_WorkCanvas, and that is what keeps it out
-        // of the sweep See Previous Operations makes of the drawn operations: a label
-        // annotates the picture rather than measuring it, so it stays either way. Being a
-        // kind no table has a column for, no counter tallies and no history tab picks, it
-        // is left out of all three for the same reason.
+        // A label is kept in the operation history, so Undo, Redo, clearing a specimen
+        // and the per-specimen archive all reach it without a second mechanism behind
+        // them. It is drawn on UI_LabelCanvas rather than UI_WorkCanvas, and that is what
+        // keeps it out of the sweep See Previous Operations makes of the drawn
+        // operations: a label annotates the picture rather than measuring it, so it stays
+        // either way. Being a kind no table has a column for, no counter tallies and no
+        // history tab picks, it is left out of all three for the same reason.
         //
         // Three things can be put on the picture: words, a dot and a star. They behave
         // alike once they are there, so one record, one layer and one set of handles serve

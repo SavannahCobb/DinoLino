@@ -32,11 +32,11 @@ namespace DinoLino
         private void MainWindow_KeyDown(object sender, KeyEventArgs e)
         {
             // These arrive before the focused control sees them, so a box being typed in
-            // would lose its own keys: Ctrl+C would clear the specimen rather than copy,
-            // Ctrl+Z would undo a measurement rather than the typing, and the arrow keys
-            // would change specimen rather than move the caret. Only those keys stand
-            // aside, though: a box makes no claim on Save, Open or Escape, and standing
-            // aside for all of them left a note with no way to save what was typed in it.
+            // would lose its own keys: Ctrl+Z would undo a measurement rather than the
+            // typing, and the arrow keys would change specimen rather than move the
+            // caret. Only those keys stand aside, though: a box makes no claim on Save,
+            // Open, Escape or the clear, and standing aside for all of them left a note
+            // with no way to save what was typed in it.
             var focusedBox = Keyboard.FocusedElement as TextBoxBase;
             bool typing = focusedBox != null;
 
@@ -85,11 +85,22 @@ namespace DinoLino
                 return;
             }
 
-            if (!typing && Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.C)
+            // Shift as well as Control, because Ctrl+C is Copy everywhere a person has
+            // ever used a keyboard and this is the one command here that cannot be taken
+            // back. Ctrl+C is left alone now, so it copies in a name field, a panel box or
+            // a label, which is what pressing it there was always meant to do. A box makes
+            // no claim on this chord, so unlike Undo it fires while one is being typed in.
+            if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)
+                && e.Key == Key.C)
             {
+                // The clear takes the labels with it, so a caret sitting in one would be
+                // left in a box being removed from under it. Hand the keyboard back
+                // first, the same as a press on the picture does.
+                if (inLabel) UI_WorkCanvas.Focus();
+
                 // Through the button's own handler, so the attempt counter, the Clear
                 // Specimen button and the Plot tab are brought up to date with it.
-                GlobalTools_ClearSpecimen(this, new RoutedEventArgs());
+                Menu_ClearSpecimen(this, new RoutedEventArgs());
                 e.Handled = true;
             }
 

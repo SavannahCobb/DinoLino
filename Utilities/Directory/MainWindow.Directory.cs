@@ -410,6 +410,10 @@ namespace DinoLino
 
             SpecimenManager.PropertyChanged += (s, e) =>
             {
+                // A rename changes the name every table carries, so the history window is
+                // told whether or not the Sample tab happens to be the one on show.
+                RefreshHistoryWindow();
+
                 if (_sampleTabSelected) RebuildSampleList();
             };
         }
@@ -771,7 +775,10 @@ namespace DinoLino
 
             SpecimenGroups.Assign(dialog.ColumnName, dialog.GroupName, chosen);
             RebuildSampleList();
-            RefreshPlotTab();   
+            RefreshPlotTab();
+
+            // A group is a column of every table, so the history window is redrawn too.
+            RefreshHistoryWindow();
         }
 
         /// Repositions a 3D specimen picked from the Sample list. The pose overlay
@@ -838,9 +845,9 @@ namespace DinoLino
                 bool confirmed = ConfirmPromptWindow.Show(
                     this, "Remove From Sample", message, out dontAskAgain);
 
-                // The preference is remembered even when the user cancels, matching how
-                // "don't ask again" behaves elsewhere.
-                if (dontAskAgain) _suppressDeleteSpecimenPrompt = true;
+                // Only once they have actually said yes. Remembering it from a cancelled
+                // prompt would let someone switch the guard off while declining to use it.
+                if (confirmed && dontAskAgain) _suppressDeleteSpecimenPrompt = true;
                 if (!confirmed) return;
             }
 

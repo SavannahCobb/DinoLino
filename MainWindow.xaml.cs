@@ -53,7 +53,7 @@ namespace DinoLino
 
             // Metadata preview/results belong to the specimen that was just left.
             // After the arriving specimen is fully active, return Outline mode to
-            // Automated Outline if Generate Metadata had been selected.
+            // Automated Outline if Measure Outline had been selected.
             ResetOutlineToolForNewSpecimen();
 
             // The arriving specimen's marks are drawn for the image now on screen,

@@ -198,7 +198,7 @@ namespace DinoLino.Utilities.Operations
         public double LineLengthImagePixels { get; set; }
 
         /// Extent of the line along the specimen's X axis, in image pixels, taken from
-        /// the orientation set by Tools ▸ Align Image. An unaligned specimen falls back
+        /// the orientation set by Tools ▸ Align ▸ Align Specimen. An unaligned specimen falls back
         /// to the image's own axes, which is what ImageAlignment hands back when no
         /// orientation has been drawn.
         public double LineDeltaXImagePixels { get; set; }

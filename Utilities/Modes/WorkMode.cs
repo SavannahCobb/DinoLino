@@ -454,7 +454,7 @@ namespace DinoLino.Utilities.Modes
         protected const string TipRedo =
             "💡 Press 'Ctrl+Y' to redo an undone operation, or select 'Redo' in the Edit menu.";
         protected const string TipClear =
-            "💡 Press 'Ctrl+C' to clear all operations, or click 'Clear' in the sidebar.";
+            "💡 Press 'Ctrl+Shift+C' to take every measurement off this specimen, or use Edit ▸ Clear Specimen Measurements. It asks first, once.";
         protected const string TipOpenImage =
             "💡 Press 'Ctrl+F' to open a new image, or select 'Open Image' in the File menu.";
         protected const string TipZoom =

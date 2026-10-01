@@ -24,7 +24,7 @@ namespace DinoLino.Utilities.Modes
             // asked for and it is the one the user can act on.
             if (fellBackToFirstHarmonic)
                 return "⚠ No axis drawn on this specimen, so rotation was normalized to the " +
-                       "first harmonic instead. Draw one with Tools, Align Image and generate again.";
+                       "first harmonic instead. Draw one with Tools, Align, Align Specimen and measure again.";
 
             switch (status)
             {

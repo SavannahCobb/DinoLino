@@ -192,8 +192,8 @@ namespace DinoLino.Utilities
             OnPropertyChanged(nameof(CanRedo));
         }
 
-        // Clears all live history and redo state — a hard reset used by "Clear All" /
-        // Ctrl+C.
+        // Clears all live history and redo state — a hard reset, used where a specimen's
+        // measurements are being discarded rather than stepped back through.
         public void Clear()
         {
             var affectedModes = _history.Concat(_redoStack)
@@ -205,8 +205,15 @@ namespace DinoLino.Utilities
             _history.Clear();
             _redoStack.Clear();
 
+            // Blank the panels as well as recompute them. A mode's averages follow its
+            // operations on their own, but the single result of the last measurement is
+            // held on the panel and would otherwise outlive the measurement it came
+            // from — on every mode at once, since a clear takes them all.
             foreach (var mode in affectedModes)
+            {
+                mode.ClearMetadata();
                 mode.OnHistoryChanged();
+            }
 
             OnPropertyChanged(nameof(CanUndo));
             OnPropertyChanged(nameof(CanRedo));
@@ -306,7 +313,7 @@ namespace DinoLino.Utilities
         }
 
         /// Drops every specimen's operations, live and archived, and blanks whatever
-        /// the mode panels were showing. Clear All uses this; the per-specimen
+        /// the mode panels were showing. File ▸ New Project uses this; the per-specimen
         /// removals above are for editing one table.
         public void ResetSession()
         {

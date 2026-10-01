@@ -1155,7 +1155,7 @@ namespace DinoLino.Utilities.Modes
         // Fired after metadata is stamped onto the committed outline.
         public event Action MetadataGenerated;
 
-        // Called from the panel's Generate Metadata handler and by the EFA window
+        // Called from the panel's Measure Outline handler and by the EFA window
         // when settings change.
         public void GenerateMetadata()
         {
@@ -1560,7 +1560,7 @@ namespace DinoLino.Utilities.Modes
             TipToggleTips
         };
 
-        // Generate Metadata tool.
+        // Measure Outline tool.
         private static readonly string[] MetadataTips =
         {
             "💡 Adjust the number of EFD Harmonics to control Fourier detail. The EF outline is overlaid in a blue, dashed line.",
@@ -1581,7 +1581,7 @@ namespace DinoLino.Utilities.Modes
             "💡 Hold the left mouse button and drag to draw an outline by hand.",
             "💡 The outline closes automatically as soon as your line crosses itself. Any leftover tails are removed.",
             "💡 Release to pause; press and drag again to continue the same line.",
-            "💡 Once closed, switch to Generate Metadata to measure the shape.",
+            "💡 Once closed, switch to Measure Outline to measure the shape.",
             TipClear,
             TipZoom,
             TipPan,

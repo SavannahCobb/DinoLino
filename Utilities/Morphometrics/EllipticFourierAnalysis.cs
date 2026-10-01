@@ -25,7 +25,7 @@ namespace DinoLino.Utilities
         /// same way up.
         FirstHarmonic,
 
-        /// The specimen's X axis, as drawn with Tools, Align Image. Keeps the
+        /// The specimen's X axis, as drawn with Tools, Align, Align Specimen. Keeps the
         /// difference between specimens that genuinely sit at different angles to
         /// their own anatomy, at the cost of needing an axis drawn on each one.
         DrawnAxis

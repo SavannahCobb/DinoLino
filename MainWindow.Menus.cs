@@ -77,15 +77,69 @@ namespace DinoLino
 
         // ---- History ----
 
+        // The one operation history window. It is not modal and it edits, so a second
+        // copy would show stale tables beside the live one and the two would disagree
+        // about which tables are staged for the workbook.
+        private GeomOpHistoryWindow _historyWindow;
+
         private void Menu_SeeHistory(object sender, RoutedEventArgs e)
         {
-            var window = new GeomOpHistoryWindow(UndoRedoManager, SpecimenManager.DisplayName, TableScales())
+            if (_historyWindow != null)
+            {
+                _historyWindow.Activate();
+                return;
+            }
+
+            // The window edits as well as reads now, so it is given the clear the rest of
+            // the program uses, a way to tell the workspace what it took, and the name of
+            // the loaded specimen as something to read rather than a value to keep.
+            _historyWindow = new GeomOpHistoryWindow(
+                UndoRedoManager, () => SpecimenManager.DisplayName, TableScales(),
+                ClearLoadedSpecimen, OnHistoryChanged)
             {
                 Owner = this,
                 FontSize = _currentFontSize,
                 FontFamily = _currentFont
             };
-            window.Show();
+
+            _historyWindow.Closed += (s, args) => _historyWindow = null;
+            _historyWindow.Show();
+        }
+
+        // Waits out a burst of refresh requests before redrawing once.
+        private DispatcherTimer _historyRefreshTimer;
+
+        /// Redraws the operation history window, if it is open, for the changes that never
+        /// reach the undo history and so cannot announce themselves to it: a scale
+        /// measured, a group assigned, a specimen renamed, an outline's metrics generated,
+        /// a project opened or reset.
+        ///
+        /// Several requests arrive for one change — a measurement raises two properties, a
+        /// rename one per keystroke — and a table of a hundred columns is not cheap to
+        /// draw, so the requests are collapsed and the window is redrawn once the burst is
+        /// over. Nothing reads the window in between, so the wait costs nothing.
+        internal void RefreshHistoryWindow()
+        {
+            if (_historyWindow == null) return;
+
+            if (_historyRefreshTimer == null)
+            {
+                _historyRefreshTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(200)
+                };
+
+                _historyRefreshTimer.Tick += (s, e) =>
+                {
+                    _historyRefreshTimer.Stop();
+                    _historyWindow?.RefreshTables();
+                };
+            }
+
+            // Restarting rather than starting: each new request pushes the redraw back, so
+            // a name being typed redraws once at the end instead of once per letter.
+            _historyRefreshTimer.Stop();
+            _historyRefreshTimer.Start();
         }
 
         private void Menu_ExportHistory(object sender, RoutedEventArgs e)
@@ -280,7 +334,7 @@ namespace DinoLino
 
         // ---- Alignment ----
 
-        /// Arms the axis-drawing capture (Tools ▸ Align Image, and the control
+        /// Arms the axis-drawing capture (Tools ▸ Align ▸ Align Specimen, and the control
         /// panel's Align button). The capture itself lives in the alignment file,
         /// which owns BeginAlignCapture.
         private void Menu_AlignImage(object sender, RoutedEventArgs e)
@@ -296,8 +350,11 @@ namespace DinoLino
         /// the menu items cannot drift apart from the buttons.
         internal void SetImageToolsEnabled(bool enabled)
         {
-            UI_MenuAlignImage.IsEnabled = enabled;
+            UI_MenuAlign.IsEnabled = enabled;
             UI_AlignButton.IsEnabled = enabled;
+
+            // The compass goes off with the picture and comes back with the next one.
+            RefreshImageAxes();
 
             UI_MenuScale.IsEnabled = enabled;
             UI_ScaleButton.IsEnabled = enabled;
@@ -309,33 +366,17 @@ namespace DinoLino
             UI_MenuRotate.IsEnabled = enabled;
         }
 
-        /// Enables Clear Specimen Data only while the loaded specimen has something
+        /// Enables Clear Specimen Measurements only while the loaded specimen has something
         /// to clear. Undone operations count: they are still on the specimen's
         /// record and the button discards them along with the rest.
         internal void UpdateClearSpecimenEnabled()
         {
-            UI_ClearSpecimenButton.IsEnabled =
-                UndoRedoManager.CanUndo || UndoRedoManager.CanRedo;
-        }
+            bool anything = UndoRedoManager.CanUndo || UndoRedoManager.CanRedo;
 
-        /// Enables Clear All only while the session holds at least one measurement,
-        /// in an archived specimen or in the live one. Undone operations count: they
-        /// are still recoverable, and the reset discards them along with everything
-        /// else.
-        internal void UpdateClearAllEnabled()
-        {
-            bool anyArchived = false;
-            foreach (var record in UndoRedoManager.Archive)
-            {
-                if (record.Operations.Count > 0)
-                {
-                    anyArchived = true;
-                    break;
-                }
-            }
-
-            UI_AAClearButton.IsEnabled =
-                anyArchived || UndoRedoManager.CanUndo || UndoRedoManager.CanRedo;
+            // One rule for both ways in, so the menu item and the button are never
+            // offering different answers to the same question.
+            UI_ClearSpecimenButton.IsEnabled = anything;
+            UI_MenuClearSpecimen.IsEnabled = anything;
         }
 
         /// Refreshes every control whose availability depends on what the session
@@ -343,8 +384,12 @@ namespace DinoLino
         internal void UpdateDataDependentControls()
         {
             UpdateClearSpecimenEnabled();
-            UpdateClearAllEnabled();
             UpdateWorkshopButtonsEnabled();
+
+            // Everything that changes what the tables hold arrives here, including the
+            // outline metrics, which are stamped on after the operation was recorded and so
+            // never reach the history window on their own.
+            RefreshHistoryWindow();
         }
 
         // ---- Tips ----
@@ -438,10 +483,16 @@ namespace DinoLino
 
         /// Toggles the image-axes compass. The overlay itself lives in the alignment
         /// file, which owns SetImageAxesVisible.
-        private void Menu_SeeImageAxes(object sender, RoutedEventArgs e)
-        {
-            SetImageAxesVisible(UI_SeeImageAxes.IsChecked);
-        }
+        private void Menu_SeeImageAxes(object sender, RoutedEventArgs e) => RefreshImageAxes();
+
+        /// The compass follows the tick and the picture together. It describes a
+        /// specimen's orientation, so it means nothing with no specimen on screen — and
+        /// its menu item sits inside Tools ▸ Align, which is greyed out until a picture
+        /// is loaded, so a compass left showing over an empty workspace could not
+        /// otherwise be dismissed. The tick itself is left alone either way: it is the
+        /// user's standing preference, not a property of what happens to be loaded.
+        private void RefreshImageAxes() =>
+            SetImageAxesVisible(UI_SeeImageAxes.IsChecked && WorkingImage != null);
 
         /// Toggles the scalebar. The overlay itself lives in the calibration file,
         /// which owns UpdateScaleBarVisibility and decides whether the bar can be shown
@@ -522,7 +573,7 @@ namespace DinoLino
 
         // ---- Settings ----
 
-        /// Toggles whether the Settings menu choices are kept for later sessions. The reading
+        /// Toggles whether the settings choices are kept for later sessions. The reading
         /// and writing lives in MainWindow_Settings.cs, which owns SetSaveSettings.
         private void Menu_SaveSettings(object sender, RoutedEventArgs e)
         {
