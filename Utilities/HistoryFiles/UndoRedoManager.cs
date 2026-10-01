@@ -58,17 +58,15 @@ namespace DinoLino.Utilities
             _history.RemoveAt(_history.Count - 1);
             _redoStack.Add(last);
 
-            // Apply metadata from new top of history
-            if (_history.Count > 0)
-            {
-                var newTop = _history.Last();
+            // Apply metadata from the newest entry that has a reading to give. An entry
+            // that measures nothing, such as a text note, is passed over: it would leave
+            // the panel showing the result of the operation just undone.
+            var newTop = _history.LastOrDefault(o => o.CarriesMetadata);
+
+            if (newTop != null)
                 newTop.ApplyMetadataToMode();
-            }
             else
-            {
-                // No history left, clear metadata in all modes
                 last.SourceMode?.ClearMetadata();
-            }
 
             last.SourceMode?.OnHistoryChanged();
             OnPropertyChanged(nameof(CanUndo));
@@ -194,8 +192,8 @@ namespace DinoLino.Utilities
             OnPropertyChanged(nameof(CanRedo));
         }
 
-        // Clears all live history and redo state — a hard reset used by "Clear All" /
-        // Ctrl+C.
+        // Clears all live history and redo state — a hard reset, used where a specimen's
+        // measurements are being discarded rather than stepped back through.
         public void Clear()
         {
             var affectedModes = _history.Concat(_redoStack)
@@ -207,11 +205,33 @@ namespace DinoLino.Utilities
             _history.Clear();
             _redoStack.Clear();
 
+            // Blank the panels as well as recompute them. A mode's averages follow its
+            // operations on their own, but the single result of the last measurement is
+            // held on the panel and would otherwise outlive the measurement it came
+            // from — on every mode at once, since a clear takes them all.
             foreach (var mode in affectedModes)
+            {
+                mode.ClearMetadata();
                 mode.OnHistoryChanged();
+            }
 
             OnPropertyChanged(nameof(CanUndo));
             OnPropertyChanged(nameof(CanRedo));
+        }
+
+        /// Takes one operation out of the live history and leaves it where Redo can
+        /// reach it, which is what Undo does to the newest one. Used by a text note's
+        /// own bin, since the note being deleted is not always the newest thing done.
+        public bool Retract(WorkOperation operation)
+        {
+            if (operation == null) return false;
+            if (!_history.Remove(operation)) return false;
+
+            _redoStack.Add(operation);
+
+            OnPropertyChanged(nameof(CanUndo));
+            OnPropertyChanged(nameof(CanRedo));
+            return true;
         }
 
         // ---- Editing (Batch Workshop) ----
@@ -293,7 +313,7 @@ namespace DinoLino.Utilities
         }
 
         /// Drops every specimen's operations, live and archived, and blanks whatever
-        /// the mode panels were showing. Clear All uses this; the per-specimen
+        /// the mode panels were showing. File ▸ New Project uses this; the per-specimen
         /// removals above are for editing one table.
         public void ResetSession()
         {

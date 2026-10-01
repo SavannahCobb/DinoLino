@@ -51,24 +51,63 @@
                 </MenuItem>
                 <MenuItem Header="Save _Settings" x:Name="UI_MenuSaveSettings"
                           IsCheckable="True" IsChecked="False" Click="Menu_SaveSettings"
-                          ToolTip="Remember the Settings menu choices for later sessions"/>
+                          ToolTip="Remember this session's settings for later sessions. Most are in the Settings menu; View Axes and the scalebar are with the commands they belong to."/>
                 <MenuItem Header="_Restore Default Settings" Click="Menu_RestoreDefaults"
-                          ToolTip="Return every Settings menu choice to how the program first opens."/>
+                          ToolTip="Return every remembered setting to how the program first opens, wherever its menu item lives."/>
             </MenuItem>
             <MenuItem Header="_Edit" MouseLeave="Menu_MouseLeave">
                 <MenuItem Header="_Undo" x:Name="UI_MenuUndo" Click="Menu_Undo"  InputGestureText="Ctrl+Z"/>
                 <MenuItem Header="_Redo" x:Name="UI_MenuRedo" Click="Menu_Redo"  InputGestureText="Ctrl+Y"/>
+                <Separator/>
+                <!-- The same handler the sidebar button and Ctrl+Shift+C use. Here so the
+                     command can be found without reading the User Guide, and so the
+                     shortcut has somewhere to be advertised. -->
+                <MenuItem Header="_Clear Specimen Measurements" x:Name="UI_MenuClearSpecimen"
+                          IsEnabled="False" Click="Menu_ClearSpecimen" InputGestureText="Ctrl+Shift+C"
+                          ToolTipService.ShowOnDisabled="True"
+                          ToolTip="Take every kind of measurement off the specimen on screen. This cannot be undone. The specimen, its image and its scale are kept."/>
             </MenuItem>
             <MenuItem Header="_Tools" MouseLeave="Menu_MouseLeave">
-                <MenuItem Header="_Set Scale" x:Name="UI_MenuSetScale" IsEnabled="False"
-                          Click="Menu_SetScale"
-                          ToolTip="Calibrate measurements: click both ends of a feature of known length, then enter that length."/>
-                <MenuItem Header="_Align Image" x:Name="UI_MenuAlignImage"
-                          Click="Menu_AlignImage" IsEnabled="False"
-                          ToolTip="Note the specimen's X or Y axis. The alignment is stored with the specimen."/>
-                <MenuItem Header="_Picture Corrections" x:Name="UI_MenuPictureCorrections" IsEnabled="False"
+                <MenuItem Header="_Scale" x:Name="UI_MenuScale" IsEnabled="False"
+                          SubmenuOpened="MenuScale_SubmenuOpened">
+                    <MenuItem Header="_Set Scale" Click="Menu_SetScale"
+                              ToolTip="Calibrate measurements: click both ends of a feature of known length, then enter that length."/>
+                    <MenuItem Header="_View Scalebar" x:Name="UI_MenuViewScaleBar"
+                              IsCheckable="True" IsChecked="False" IsEnabled="False"
+                              Click="Menu_ViewScaleBar"
+                              ToolTip="Show a scalebar for this specimen, marked 0 to 10 in a unit that suits the zoom &#x2014; the unit it was scaled in when unzoomed. Needs a scale set first."/>
+                    <Separator/>
+                    <!-- Copying a scale forward: one photographic setup usually serves a
+                         whole tray of specimens, so the scale measured once on one of them
+                         is the scale for all of them. A specimen given a scale this way is
+                         marked as having inherited it, in Directory &#x25b8; Sample and on
+                         the sidebar, so a reader can still tell which were measured. -->
+                    <MenuItem Header="Apply Scale to _All Specimens" x:Name="UI_MenuApplyScaleAll"
+                              IsEnabled="False" Click="Menu_ApplyScaleAll"
+                              ToolTipService.ShowOnDisabled="True"
+                              ToolTip="Give every other specimen this specimen's scale. Anything already measured on its own image is asked about first."/>
+                    <MenuItem Header="Apply Scale to Selecte_d Specimens" x:Name="UI_MenuApplyScaleSelected"
+                              IsEnabled="False" Click="Menu_ApplyScaleSelected"
+                              ToolTipService.ShowOnDisabled="True"
+                              ToolTip="Give this specimen's scale to the ones ticked in Directory &#x25b8; Sample."/>
+                </MenuItem>
+                <MenuItem Header="_Align" x:Name="UI_MenuAlign" IsEnabled="False">
+                    <MenuItem Header="Align _Specimen" x:Name="UI_MenuAlignSpecimen"
+                              Click="Menu_AlignImage"
+                              ToolTip="Note the specimen's X or Y axis. The alignment is stored with the specimen."/>
+                    <!-- Was Settings &#x25b8; See Image Axes. It belongs beside the command
+                         that sets the axes, the way View Scalebar sits beside Set Scale, and
+                         it is worded to match that neighbour. The stored setting keeps its
+                         old name so a saved Settings file still reads. One consequence of
+                         the move: the toggle now needs a loaded picture, since the parent
+                         item is gated on one. -->
+                    <MenuItem Header="View _Axes" x:Name="UI_SeeImageAxes"
+                              IsCheckable="True" IsChecked="False" Click="Menu_SeeImageAxes"
+                              ToolTip="Show the specimen's X and Y axes in the corner of the workspace."/>
+                </MenuItem>
+                <MenuItem Header="_Image Adjustments" x:Name="UI_MenuPictureCorrections" IsEnabled="False"
                           Click="Menu_PictureAdjustment"
-                          ToolTip="Adjust picture properties such as brightness, contrast, and saturation."/>
+                          ToolTip="Adjust how the picture is shown: brightness, contrast and saturation, kept per specimen and reversible."/>
                 <MenuItem Header="_Decimate" x:Name="UI_MenuDecimate" IsEnabled="False" Click="Menu_DownSample"/>
                 <MenuItem Header="_Flip" x:Name="UI_MenuFlip" IsEnabled="False">
                     <MenuItem Header="_Horizontal"  Click="Menu_FlipHorizontal"/>
@@ -96,8 +135,6 @@
                           ToolTip="Keep all previously drawn operations on screen until cleared."/>
                 <MenuItem Header="_See Operation Count" x:Name="UI_SeeAttempts" IsCheckable="True" IsChecked="True" Click="Menu_SeeAttempts"
                           ToolTip="Display the number of operations performed for each specimen."/>
-                <MenuItem Header="See Image _Axes" x:Name="UI_SeeImageAxes" IsCheckable="True" IsChecked="False" Click="Menu_SeeImageAxes"
-                          ToolTip="Show a compass in the workspace corner pointing along the specimen's X and Y axes."/>
                 <MenuItem Header="See _Navigation Window" x:Name="UI_SeeMiniMap" IsCheckable="True" IsChecked="False" Click="Menu_SeeMiniMap"
                           ToolTip="Show a draggable overview of the whole image. Click a spot on it to pan the zoomed view there."/>
                 <MenuItem Header="See _Batch Workshop" x:Name="UI_SeeWorkshop" IsCheckable="True" IsChecked="True" Click="Menu_SeeWorkshop"
@@ -187,7 +224,7 @@
                     <TabControl x:Name="UI_ControlTabs" Margin="0,10,0,10"
                             SelectionChanged="ControlTabs_SelectionChanged">
                         <TabItem Header="Curvature"/>
-                        <TabItem Header="Triangle"/>
+                        <TabItem Header="Angle"/>
                         <TabItem Header="Draw"/>
                         <TabItem Header="Outline"/>
                     </TabControl>
@@ -205,9 +242,9 @@
                     VerticalAlignment="Top"
                     Padding="8,4"
                     IsEnabled="False"
-                    Click="GlobalTools_ClearSpecimen"
-                    ToolTip="Clear measurements and operations for the current specimen only">
-                        <TextBlock Text="Clear Specimen Data"
+                    Click="Menu_ClearSpecimen"
+                    ToolTip="Take every kind of measurement off the specimen on screen. This cannot be undone. Other specimens are untouched.">
+                        <TextBlock Text="Clear Specimen Measurements"
                         TextWrapping="Wrap"
                         TextAlignment="Center"/>
                     </Button>
@@ -285,7 +322,17 @@
                 <Grid x:Name="UI_WorkSpace" Grid.Row="0" Grid.Column="0" ClipToBounds="True">
                     <Grid MouseMove="WorkSpace_MouseMove" MouseLeave="WorkSpace_MouseLeave" MouseDown="WorkSpace_Click" MouseUp="WorkSpace_MouseUp" MouseWheel="WorkSpace_ScrollZoom">
                         <Border x:Name ="UI_WorkBorder" BorderBrush="White" BorderThickness="3" Panel.ZIndex="10" Width="{Binding ActualWidth, ElementName=UI_WorkImage, Mode=OneWay}" Height="{Binding ActualHeight, ElementName=UI_WorkImage, Mode=OneWay}">
-                            <Canvas x:Name="UI_WorkCanvas" Focusable="True"/>
+                            <Grid>
+                                <Canvas x:Name="UI_WorkCanvas" Focusable="True"/>
+
+                                <!-- Labels from Draw mode's Add Label (Utilities\Modes\DrawModeFiles\DrawMode.cs).
+                                     A layer of their own, above the drawings and inside the same
+                                     border, so they carry the zoom and the pan with the picture but
+                                     are not swept up when See Previous Operations clears the drawn
+                                     operations. No Background, so the layer itself is not a click
+                                     target and only the labels on it are. -->
+                                <Canvas x:Name="UI_LabelCanvas"/>
+                            </Grid>
                         </Border>
                         <Canvas x:Name="UI_WorkBackground" Background="Gray" />
                         <Image x:Name="UI_WorkImage"/>
@@ -367,7 +414,7 @@
                     </Border>
 
                     <!-- Attempt counter overlay (draggable HUD, bottom-right by default).
-                     Drawn shapes are tallied one row per kind, matching the Shape Data
+                     Drawn shapes are tallied one row per kind, matching the Draw Data
                      table's per-kind columns. The rows deliberately carry no FontSize
                      of their own: the size is set on this Border, so Settings ▸ Font
                      scales every row, including any added later. -->
@@ -389,6 +436,7 @@
                             <TextBlock x:Name="UI_AttemptPara"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptSpline"  Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptAngle"   Foreground="#EEE" Margin="0,1"/>
+                            <TextBlock x:Name="UI_AttemptAxis"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptRect"    Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptSquare"  Foreground="#EEE" Margin="0,1"/>
                             <TextBlock x:Name="UI_AttemptEllipse" Foreground="#EEE" Margin="0,1"/>
@@ -398,10 +446,57 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Image axes compass (Settings ▸ See Image Axes). One L-shaped
+                    <!-- Scalebar (Tools ▸ Scale ▸ View Scalebar). Ten segments, alternating
+                         filled and open, labelled 0 to 10 in the chosen unit. Its length
+                         is taken from the calibration and the live zoom, so it reads true
+                         at any magnification and lengthens as the image is zoomed into. The
+                         unit is captioned at its end: the one the specimen was scaled in
+                         while unzoomed, and one chosen to suit the zoom otherwise, so zooming
+                         in reads in a smaller unit and zooming out in a larger one. A tick
+                         rises out of the bar under each number. Draggable, so it can be put
+                         where the specimen is not. -->
+                    <Border x:Name="UI_ScaleBar" Panel.ZIndex="56"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                            Margin="16,0,0,80"
+                            Background="White" BorderBrush="Black" BorderThickness="1"
+                            Padding="6,4,6,4"
+                            Cursor="SizeAll" Visibility="Collapsed"
+                            ToolTip="The scale at the current zoom. Drag to move."
+                            MouseLeftButtonDown="ScaleBar_MouseDown"
+                            MouseMove="ScaleBar_MouseMove"
+                            MouseLeftButtonUp="ScaleBar_MouseUp"
+                            LostMouseCapture="ScaleBar_LostCapture">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="UI_ScaleBarTransform"/>
+                        </Border.RenderTransform>
+
+                        <StackPanel Orientation="Horizontal">
+                            <StackPanel>
+                                <Canvas x:Name="UI_ScaleBarCanvas" HorizontalAlignment="Left"/>
+
+                                <TextBlock x:Name="UI_ScaleBarNote" Foreground="Black"
+                                           TextWrapping="Wrap" MaxWidth="220"
+                                           Visibility="Collapsed"/>
+                            </StackPanel>
+
+                            <!-- Length grip. Only the sideways travel is read, so the bar's
+                                 height never changes, and it is left out of a screenshot the
+                                 way the cursor is: it is a control, not part of the figure. -->
+                            <Border x:Name="UI_ScaleBarGrip" Width="7" Margin="5,1,0,1"
+                                    Background="#FFE8E8E8" BorderBrush="#FF808080"
+                                    BorderThickness="1" Cursor="SizeWE"
+                                    ToolTip="Drag sideways to lengthen or shorten the bar, which changes how many units it spans. Double-click to fit it to the view again."
+                                    MouseLeftButtonDown="ScaleBarGrip_MouseDown"
+                                    MouseMove="ScaleBarGrip_MouseMove"
+                                    MouseLeftButtonUp="ScaleBarGrip_MouseUp"
+                                    LostMouseCapture="ScaleBarGrip_LostCapture"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Image axes compass (Tools ▸ Align ▸ View Axes). One L-shaped
                          double-headed arrow: the corner sits at the origin, one head
                          runs along the specimen's X axis and the other along its Y,
-                         as set by Tools ▸ Align Image. The whole drawing turns by
+                         as set by Tools ▸ Align ▸ Align Specimen. The whole drawing turns by
                          RotationDegrees, so the X head lands on the direction the user
                          drew and Y stays square to it. With no alignment the rotation
                          is zero, leaving X right and Y up. Each label spins back the
@@ -412,7 +507,7 @@
                             Margin="16,0,0,16"
                             Background="Transparent"
                             Cursor="SizeAll" Visibility="Collapsed"
-                            ToolTip="The specimen's X and Y axes, set by Tools ▸ Align Image. Drag to move."
+                            ToolTip="The specimen's X and Y axes, set by Tools ▸ Align ▸ Align Specimen. Drag to move."
                             MouseLeftButtonDown="ImageAxes_MouseDown"
                             MouseMove="ImageAxes_MouseMove"
                             MouseLeftButtonUp="ImageAxes_MouseUp">
@@ -601,14 +696,6 @@
                            Foreground="#777" TextWrapping="Wrap"
                            HorizontalAlignment="Left" Margin="2,0,0,8"/>
 
-                    <Button x:Name="UI_AAClearButton" 
-                            DockPanel.Dock="Bottom" 
-                            Content="Clear All" MinHeight="32"
-                            Margin="2,10,2,0"
-                            IsEnabled="False"
-                            Click="GlobalTools_Clear"
-                            ToolTip="Clear all data for every specimen in the session"/>
-
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               VerticalAlignment="Top" MaxHeight="340">
                         <StackPanel>
@@ -659,68 +746,12 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Curvature Data" Style="{StaticResource WorkshopRowLabel}"/>
+                                <TextBlock Grid.Column="0" Text="Geometric Data" Style="{StaticResource WorkshopRowLabel}"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_EditCurvature" Style="{StaticResource WorkshopEditButton}"
-                                        Click="Workshop_EditCurvature"/>
-                                    <Button x:Name="UI_ExportCurvature" Style="{StaticResource WorkshopExportButton}"
-                                        Click="Workshop_ExportCurvature"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Style="{StaticResource WorkshopRow}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Angle Data" Style="{StaticResource WorkshopRowLabel}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_EditAngle" Style="{StaticResource WorkshopEditButton}"
-                                        Click="Workshop_EditAngle"/>
-                                    <Button x:Name="UI_ExportAngle" Style="{StaticResource WorkshopExportButton}"
-                                        Click="Workshop_ExportAngle"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Style="{StaticResource WorkshopRow}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Shape Data" Style="{StaticResource WorkshopRowLabel}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_EditShape" Style="{StaticResource WorkshopEditButton}"
-                                        Click="Workshop_EditShape"/>
-                                    <Button x:Name="UI_ExportShape" Style="{StaticResource WorkshopExportButton}"
-                                        Click="Workshop_ExportShape"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Style="{StaticResource WorkshopRow}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Outline Metadata" Style="{StaticResource WorkshopRowLabel}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_EditOutline" Style="{StaticResource WorkshopEditButton}"
-                                        Click="Workshop_EditOutline"/>
-                                    <Button x:Name="UI_ExportOutline" Style="{StaticResource WorkshopExportButton}"
-                                        Click="Workshop_ExportOutline"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Style="{StaticResource WorkshopRow}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="All Geometric Data" Style="{StaticResource WorkshopRowLabel}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_EditAllGeometric" Style="{StaticResource WorkshopEditButton}"
-                                            Click="Workshop_EditAllGeometric"/>
-                                    <Button x:Name="UI_ExportAllGeometric" Style="{StaticResource WorkshopExportButton}"
-                                            Click="Workshop_ExportAllGeometric"/>
+                                    <Button x:Name="UI_EditGeometric" Style="{StaticResource WorkshopEditButton}"
+                                            Click="Workshop_EditGeometric"/>
+                                    <Button x:Name="UI_ExportGeometric" Style="{StaticResource WorkshopExportButton}"
+                                            Click="Workshop_ExportGeometric"/>
                                 </StackPanel>
                             </Grid>
                             
@@ -729,26 +760,12 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="EFA Data" Style="{StaticResource WorkshopRowLabel}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_EditEfa" Style="{StaticResource WorkshopEditButton}"
-                                        Click="Workshop_EditEfa"/>
-                                    <Button x:Name="UI_ExportEfa" Style="{StaticResource WorkshopExportButton}"
-                                        Click="Workshop_ExportEfa"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Style="{StaticResource WorkshopRow}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="2D Outlines" Style="{StaticResource WorkshopRowLabel}"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <Button x:Name="UI_Edit2DOutlines" Style="{StaticResource WorkshopEditButton}"
-                                        Click="Workshop_Edit2DOutlines"/>
-                                    <Button x:Name="UI_Export2DOutlines" Style="{StaticResource WorkshopExportButton}"
-                                        Click="Workshop_Export2DOutlines"/>
+                                    <Button x:Name="UI_EditOutlines2D" Style="{StaticResource WorkshopEditButton}"
+                                        Click="Workshop_EditOutlines2D"/>
+                                    <Button x:Name="UI_ExportOutlines2D" Style="{StaticResource WorkshopExportButton}"
+                                        Click="Workshop_ExportOutlines2D"/>
                                 </StackPanel>
                             </Grid>
                         </StackPanel>

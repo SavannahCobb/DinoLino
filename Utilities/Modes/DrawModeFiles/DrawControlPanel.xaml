@@ -66,18 +66,18 @@
                        ToolTip="Straight-line distance from the first point to the second."/>
                 <Label Content="{Binding LineLengthScaledResult}" Width="175"/>
             </StackPanel>
-            <!-- The line resolved onto the specimen's own axes, set by Tools > Align
-                 Image. The two axes are perpendicular by construction, so these close
+            <!-- The line resolved onto the specimen's own axes, set by Tools > Align >
+                 Align Specimen. The two axes are perpendicular by construction, so these close
                  the triangle with Length. Without an alignment they fall back to the
                  image's axes rather than reading blank. -->
             <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
                 <Label Content="X Distance:"
-                       ToolTip="Extent along the specimen's X-axis, set by Tools &gt; Align Image. Falls back to the image's own X-axis when no alignment is set."/>
+                       ToolTip="Extent along the specimen's X-axis, set by Tools &gt; Align &gt; Align Specimen. Falls back to the image's own X-axis when no alignment is set."/>
                 <Label Content="{Binding LineDeltaXScaledResult}" Width="175"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
                 <Label Content="Y Distance:"
-                       ToolTip="Extent along the specimen's Y-axis, set by Tools &gt; Align Image. Falls back to the image's own Y-axis when no alignment is set."/>
+                       ToolTip="Extent along the specimen's Y-axis, set by Tools &gt; Align &gt; Align Specimen. Falls back to the image's own Y-axis when no alignment is set."/>
                 <Label Content="{Binding LineDeltaYScaledResult}" Width="175"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
@@ -89,6 +89,26 @@
                 <Label Content="Angle (°):"
                        ToolTip="Clockwise angle from the previous line. A line towards 11 o'clock drawn after one towards 12 reads 330."/>
                 <Label Content="{Binding LineAngleResult}" Width="175"/>
+            </StackPanel>
+        </StackPanel>
+
+        <RadioButton Content="Add Label" Tag="Text" GroupName="DrawGroup"
+                     Checked="DrawMethod_Checked" MinHeight="25" FontWeight="Bold" Margin="0,10,0,0"
+                     ToolTip="Click the image to write a label on it. Labels belong to the specimen, not to the measurements."/>
+        <StackPanel Visibility="{Binding IsTextSelected, Converter={StaticResource BoolToVis}}"
+                    Margin="14,0,0,0">
+            <!-- What a click puts on the picture. One row, each the same width, so the
+                 three read as the one choice they are. -->
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,2">
+                <RadioButton Content="Text" Tag="Text" GroupName="LabelKind" IsChecked="True"
+                             Checked="LabelKind_Checked" Width="62" VerticalAlignment="Center"
+                             ToolTip="Words you type on the image."/>
+                <RadioButton Content="Point" Tag="Point" GroupName="LabelKind"
+                             Checked="LabelKind_Checked" Width="62" VerticalAlignment="Center"
+                             ToolTip="A filled black circle, centred on the point clicked."/>
+                <RadioButton Content="Star" Tag="Star" GroupName="LabelKind"
+                             Checked="LabelKind_Checked" Width="62" VerticalAlignment="Center"
+                             ToolTip="A filled black star, centred on the point clicked."/>
             </StackPanel>
         </StackPanel>
     </StackPanel>

@@ -106,12 +106,16 @@ namespace DinoLino
         {
             UI_WorkImage.ZoomElement(delta, relativeTo);
             UI_WorkBorder.CopyTransforms(UI_WorkImage);
+
+            // The bar is a length on screen, so magnifying the image lengthens it.
+            RedrawScaleBar();
         }
 
         private void ResetWorkSpaceZoom()
         {
             UI_WorkImage.ResetZoom();
             UI_WorkBorder.CopyTransforms(UI_WorkImage);
+            RedrawScaleBar();
         }
 
         // =====================
@@ -293,6 +297,10 @@ namespace DinoLino
                 }
             }
 
+            // The labels are placed from the mapping above, so they follow it whenever
+            // the picture is laid out at a different size.
+            RepositionLabels();
+
             if (ScaleCalibration.UpdateViewScale(displayW / WorkingImage.PixelWidth))
                 RefreshAllScalePlaceholders();
         }
@@ -324,6 +332,11 @@ namespace DinoLino
                 return;
             }
 
+            // Read before the picture is replaced: the labels are carried through the
+            // same turn, and that needs the size they were placed against.
+            double turnedFromWidth = WorkingImage.PixelWidth;
+            double turnedFromHeight = WorkingImage.PixelHeight;
+
             var transformed = new TransformedBitmap(WorkingImage, transform);
 
             // Re-encode the transformed bitmap so it can be cached and reused like a normal image source.
@@ -354,6 +367,12 @@ namespace DinoLino
             ResetWorkSpaceZoom();
             ImageAlignment.Clear();
             ClearWorkspace();
+
+            // The drawn operations go with the turn; the labels are carried through it,
+            // since a label left at its old coordinates would sit on screen naming the
+            // wrong feature rather than simply disappearing.
+            MoveLabelsThrough(transform, turnedFromWidth, turnedFromHeight);
+
             RefreshAllScalePlaceholders();
 
             OutlineMode.SourceImage = WorkingImage;
@@ -440,10 +459,15 @@ namespace DinoLino
             var cursorVis = UI_DotCursor.Visibility;
             var ringVis = _brushRing != null ? _brushRing.Visibility : Visibility.Collapsed;
 
+            // The bar belongs in the picture; the grip for resizing it does not.
+            var gripVis = UI_ScaleBarGrip.Visibility;
+
             try
             {
                 UI_DotCursor.Visibility = Visibility.Collapsed;
                 if (_brushRing != null) _brushRing.Visibility = Visibility.Collapsed;
+                UI_ScaleBarGrip.Visibility = Visibility.Collapsed;
+                SyncLabelChrome(hideAll: true);
                 UI_WorkSpace.UpdateLayout();
 
                 var rtb = new RenderTargetBitmap(
@@ -457,6 +481,8 @@ namespace DinoLino
             {
                 UI_DotCursor.Visibility = cursorVis;   // Restore the cursor even if rendering fails.
                 if (_brushRing != null) _brushRing.Visibility = ringVis;
+                UI_ScaleBarGrip.Visibility = gripVis;
+                SyncLabelChrome(hideAll: false);
                 UI_WorkSpace.UpdateLayout();
             }
         }
@@ -570,53 +596,89 @@ namespace DinoLino
         // Global actions
         // =====================
 
-        // Remembers "Don't show this message again" for the rest of the session.
-        private bool _suppressClearAllPrompt;
+        /// Whether clearing a specimen still stops to ask. Measuring a large sample means
+        /// clearing a specimen often, and a dialog in that path costs more than it saves
+        /// once the user knows what the command does — so they are allowed to switch it
+        /// off. Kept between sessions only while File ▸ Save Settings is on, and brought
+        /// back by File ▸ Restore Default Settings.
+        private bool _askBeforeClearSpecimen = true;
 
-        /// Clear All: returns the program to how it opened — every specimen, every
-        /// measurement, and every cached image gone.
-        private void GlobalTools_Clear(object sender, RoutedEventArgs e)
+        /// The one question asked before a specimen's measurements are discarded, wherever
+        /// the command was invoked from. Returns false when the user changed their mind.
+        ///
+        /// The count and the name are in the text because the blast radius is the thing
+        /// worth checking: the command takes every kind of measurement off the specimen,
+        /// not only the ones the user happens to be looking at.
+        private bool ConfirmClearSpecimen(int count)
         {
-            if (!_suppressClearAllPrompt)
-            {
-                bool dontAskAgain;
-                bool confirmed = ConfirmPromptWindow.Show(
-                    this,
-                    "Clear All",
-                    "Are you sure? This will clear all data for all specimens",
-                    out dontAskAgain,
-                    confirmText: "OK");
+            if (!_askBeforeClearSpecimen) return true;
 
-                // The preference is remembered even when the user cancels, matching
-                // how "don't ask again" behaves elsewhere.
-                if (dontAskAgain) _suppressClearAllPrompt = true;
-                if (!confirmed) return;
-            }
+            bool dontAskAgain;
+            bool confirmed = ConfirmPromptWindow.Show(
+                this,
+                "Clear Specimen Measurements",
+                "Clear all " + count + " recorded operation(s) from "
+                    + SpecimenManager.NameOf(SpecimenManager.CurrentSpecimen) + "?"
+                    + "\n\nThis removes every measurement and every label for this specimen, not "
+                    + "only the ones on screen, and cannot be undone. The image, name and scale "
+                    + "are kept.",
+                out dontAskAgain,
+                confirmText: "Clear");
 
-            ResetSession();
+            // Only once they have actually said yes. Remembering it from a cancelled
+            // prompt would let someone switch the guard off while declining to use it.
+            if (confirmed && dontAskAgain) _askBeforeClearSpecimen = false;
 
-            // The kept copy describes the session that has just been thrown away, and
-            // offering it back would undo what the user has confirmed twice.
-            AutoSave.Discard();
+            return confirmed;
         }
 
-        /// <summary>
-        /// Clears recorded operations and derived workspace data for the currently
-        /// active specimen only. Other loaded specimens remain unchanged.
-        /// </summary>
-        private void GlobalTools_ClearSpecimen(object sender, RoutedEventArgs e)
+        /// Takes every measurement and every label off the loaded specimen. The Edit menu
+        /// item, the sidebar button, Ctrl+Shift+C and the Batch Workshop editor all arrive
+        /// at the same question and the same work, so none of them can drift from the
+        /// others about what is asked, what is discarded, or what is refreshed afterwards.
+        private void Menu_ClearSpecimen(object sender, RoutedEventArgs e)
         {
-            if (WorkingImage == null || SpecimenManager.CurrentSpecimen == null)
+            if (UndoRedoManager == null) return;
+
+            // No test for a loaded picture, so that this agrees with the same command in
+            // the operation history window: a project whose image could not be found still
+            // holds that specimen's measurements, and they are still the ones this clears.
+            //
+            // Nothing recorded, so nothing to ask about and nothing to discard — but the
+            // picture can still be carrying a capture that was begun and not finished,
+            // and this is what takes it off. Escape ends such a capture without putting
+            // the tool back to its first click, so a start over has to come from here.
+            if (UndoRedoManager.History.Count + UndoRedoManager.RedoStack.Count == 0)
+            {
+                ClearWorkspace();
                 return;
+            }
 
-            // Clears the active specimen's UndoRedoManager.History and workspace
-            // elements. ClearWorkspace also clears the EFD/metadata preview.
+            // Everything else is the shared clear, which the operation history window
+            // calls too.
+            ClearLoadedSpecimen();
+        }
+
+        /// The loaded specimen's clear, for the operation history window to call instead
+        /// of doing its own. It reads which specimen is loaded now rather than which one
+        /// that window was opened over, and it does the whole job — the measurements, the
+        /// drawings, a half-finished capture, the outline preview and the plot — so the
+        /// two routes cannot drift apart again. Returns whether anything was cleared.
+        internal bool ClearLoadedSpecimen()
+        {
+            if (UndoRedoManager == null) return false;
+
+            // No test for a loaded picture. A project whose image could not be found still
+            // holds that specimen's measurements, and they are still the ones this clears;
+            // ClearWorkspace does nothing harmful with an empty workspace.
+            int count = UndoRedoManager.History.Count + UndoRedoManager.RedoStack.Count;
+            if (count == 0) return false;
+
+            if (!ConfirmClearSpecimen(count)) return false;
+
             ClearAllOperations();
-
-            // Keep derived UI current after removing the active specimen's data.
-            UpdateAttemptCounter();
-            UpdateClearSpecimenEnabled();
             RefreshPlotTab();
+            return true;
         }
 
         /// Empties every piece of session state: the specimens, their measurements,
@@ -666,6 +728,18 @@ namespace DinoLino
 
         private void RefreshAllScalePlaceholders()
         {
+            // Everything the bar turns on arrives here: a specimen loaded, a
+            // calibration measured or lost, a window resized, an image turned. Whether
+            // the bar can be shown at all moves with the scale, so that is settled here
+            // too rather than only redrawn.
+            UpdateScaleBarVisibility();
+
+            // Whether a specimen's scale was measured or passed on is read off the
+            // roster, so the roster is redrawn from here too: this is the one place
+            // every change of calibration arrives at, and the mark would otherwise
+            // stay as it was until something unrelated rebuilt the list.
+            if (_sampleTabSelected) RebuildSampleList();
+
             if (AllWorkModes == null) return;
             foreach (var mode in AllWorkModes)
                 mode.RefreshScalePlaceholders();
@@ -891,6 +965,12 @@ namespace DinoLino
             {
                 ScaleCalibration.SetFromLine(pixelLength, dlg.LengthValue, dlg.SelectedUnit);
                 RefreshAllScalePlaceholders();
+
+                // Every length and area in every table is converted with this specimen's
+                // scale, so an open history window is showing pixels until it is told. Here
+                // and not in RefreshAllScalePlaceholders, which also runs when the window
+                // is merely resized — that changes no measurement.
+                RefreshHistoryWindow();
             }
 
             if (_scaleLine != null)

@@ -8,8 +8,9 @@ using System.Collections.Generic;
 namespace DinoLino
 {
     /// <summary>
-    /// Workshop sidebar: per-category CSV export for every specimen in the session,
-    /// plus the sidebar's visibility toggle.
+    /// Workshop sidebar: the Geometric Data workbook and the 2D Outlines images, each
+    /// covering every specimen in the session, plus the sidebar's visibility toggle.
+    /// One mode's table on its own is handled by its tab in the operation history.
     /// </summary>
     public partial class MainWindow
     {
@@ -159,67 +160,40 @@ namespace DinoLino
         // =====================
 
         // Every export covers all specimens: the archived records plus the live
-        // history. Each category writes one wide CSV, matching the table shown by its
-        // edit button.
+        // history. One mode's table on its own is exported from its own tab in the
+        // operation history, which is also where it can be edited; the sidebar writes
+        // the whole workbook.
 
-        private void Workshop_ExportCurvature(object sender, RoutedEventArgs e)
-            => ExportWorkshopCategory(WorkshopCategory.Curvature);
-
-        private void Workshop_ExportAngle(object sender, RoutedEventArgs e)
-            => ExportWorkshopCategory(WorkshopCategory.Angle);
-
-        private void Workshop_ExportShape(object sender, RoutedEventArgs e)
-            => ExportWorkshopCategory(WorkshopCategory.Shape);
-
-        private void Workshop_ExportOutline(object sender, RoutedEventArgs e)
-            => ExportWorkshopCategory(WorkshopCategory.OutlineMetadata);
-
-        private void Workshop_ExportEfa(object sender, RoutedEventArgs e)
-            => ExportWorkshopCategory(WorkshopCategory.Efa);
-
-        private void ExportWorkshopCategory(WorkshopCategory category)
-        {
-            if (UndoRedoManager == null) return;
-
-            GeomOpHistoryWindow.ExportWorkshopCsv(
-                category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
-        }
-
-        /// Writes one xlsx holding the tables staged in the History window, or every
+        /// Writes one xlsx holding the tables staged in the operation history, or every
         /// table when none have been staged.
-        private void Workshop_ExportAllGeometric(object sender, RoutedEventArgs e)
+        private void Workshop_ExportGeometric(object sender, RoutedEventArgs e)
         {
             if (UndoRedoManager == null) return;
 
             GeomOpHistoryWindow.ExportAllGeometricData(
-                UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                UndoRedoManager, SpecimenManager.DisplayName, TableScales());
         }
 
         // =====================
         // Row availability
         // =====================
 
-        /// Enables each row's edit and export buttons only while its category holds
-        /// something to show. The test runs the same acceptance check the tables
-        /// themselves use, so a row can never offer an empty table.
+        /// Enables the Geometric Data row only while the session holds a measurement
+        /// some tab of the operation history would table. The test runs the same
+        /// acceptance check the tables themselves use, so the row can never offer an
+        /// empty workbook.
         internal void UpdateWorkshopButtonsEnabled()
         {
-            bool curvature = HasWorkshopData(WorkshopCategory.Curvature);
-            bool angle = HasWorkshopData(WorkshopCategory.Angle);
-            bool shape = HasWorkshopData(WorkshopCategory.Shape);
-            bool outline = HasWorkshopData(WorkshopCategory.OutlineMetadata);
-            bool efa = HasWorkshopData(WorkshopCategory.Efa);
+            // Every category the history has a tab for, EFA included: the workbook is
+            // built from those tabs, so what fills one of them fills the workbook.
+            bool any =
+                HasWorkshopData(WorkshopCategory.Curvature)
+                || HasWorkshopData(WorkshopCategory.Angle)
+                || HasWorkshopData(WorkshopCategory.Shape)
+                || HasWorkshopData(WorkshopCategory.OutlineMetadata)
+                || HasWorkshopData(WorkshopCategory.Efa);
 
-            UI_EditCurvature.IsEnabled = UI_ExportCurvature.IsEnabled = curvature;
-            UI_EditAngle.IsEnabled = UI_ExportAngle.IsEnabled = angle;
-            UI_EditShape.IsEnabled = UI_ExportShape.IsEnabled = shape;
-            UI_EditOutline.IsEnabled = UI_ExportOutline.IsEnabled = outline;
-            UI_EditEfa.IsEnabled = UI_ExportEfa.IsEnabled = efa;
-
-            // The workbook holds the History window's tabs, which are built from the
-            // four geometric categories; EFA has no tab there.
-            bool anyGeometric = curvature || angle || shape || outline;
-            UI_EditAllGeometric.IsEnabled = UI_ExportAllGeometric.IsEnabled = anyGeometric;
+            UI_EditGeometric.IsEnabled = UI_ExportGeometric.IsEnabled = any;
         }
 
         /// True when any specimen of the session, archived or live, holds a
@@ -228,7 +202,7 @@ namespace DinoLino
         {
             if (UndoRedoManager == null) return false;
 
-            var groups = WorkshopTables.ColumnGroups(category, UndoRedoManager, ScaleCalibration);
+            var groups = WorkshopTables.ColumnGroups(category, UndoRedoManager, TableScales());
 
             foreach (var record in UndoRedoManager.Archive)
             {
@@ -259,32 +233,17 @@ namespace DinoLino
         {
             bool any = OutlineShapeExporter.Survey().TracedCount > 0;
 
-            UI_Edit2DOutlines.IsEnabled = any;
-            UI_Export2DOutlines.IsEnabled = any;
+            UI_EditOutlines2D.IsEnabled = any;
+            UI_ExportOutlines2D.IsEnabled = any;
         }
 
         // =====================
         // Editing
         // =====================
 
-        private void Workshop_EditCurvature(object sender, RoutedEventArgs e)
-            => OpenWorkshopEditor(WorkshopCategory.Curvature);
-
-        private void Workshop_EditAngle(object sender, RoutedEventArgs e)
-            => OpenWorkshopEditor(WorkshopCategory.Angle);
-
-        private void Workshop_EditShape(object sender, RoutedEventArgs e)
-            => OpenWorkshopEditor(WorkshopCategory.Shape);
-
-        private void Workshop_EditOutline(object sender, RoutedEventArgs e)
-            => OpenWorkshopEditor(WorkshopCategory.OutlineMetadata);
-
-        private void Workshop_EditEfa(object sender, RoutedEventArgs e)
-            => OpenWorkshopEditor(WorkshopCategory.Efa);
-
         /// Opens the folder of stored silhouettes, where they can be renamed,
         /// duplicated, and deleted. Only what survives there is exported.
-        private void Workshop_Edit2DOutlines(object sender, RoutedEventArgs e)
+        private void Workshop_EditOutlines2D(object sender, RoutedEventArgs e)
         {
             var window = new OutlineGalleryWindow
             {
@@ -298,41 +257,39 @@ namespace DinoLino
             UpdateOutlineGalleryEnabled();
         }
 
-        /// Opens the History window, where each tab can be staged for the workbook
-        /// that the All Geometric Data export writes.
-        private void Workshop_EditAllGeometric(object sender, RoutedEventArgs e)
+        /// Opens the operation history: one tab per mode, where a table is read, edited
+        /// and exported, and where each tab can be staged for the workbook that the
+        /// Geometric Data export writes.
+        private void Workshop_EditGeometric(object sender, RoutedEventArgs e)
             => Menu_SeeHistory(this, new RoutedEventArgs());
 
-        /// Opens the table editor for one category and clears the workspace visuals of
-        /// anything deleted while it was open.
-        private void OpenWorkshopEditor(WorkshopCategory category)
+        /// Brings everything that reads the tables up to date after a change made in the
+        /// operation history window, and takes the drawings of anything it deleted off the
+        /// picture. That window is not modal, so this runs on each change rather than when
+        /// it closes, and the list is empty for a change that deleted nothing — adding or
+        /// hiding a column alters what the plot and the variable pickers offer without
+        /// removing a measurement.
+        internal void OnHistoryChanged(IReadOnlyList<WorkOperation> removed)
         {
-            if (UndoRedoManager == null) return;
-
-            var window = new WorkshopEditWindow(
-                category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration)
+            if (removed != null)
             {
-                Owner = this,
-                FontSize = _currentFontSize,
-                FontFamily = _currentFont
-            };
-
-            window.ShowDialog();
-
-            // Deleted operations may still have drawings on the canvas; the operation
-            // itself is already gone from history.
-            foreach (var op in window.RemovedOperations)
-            {
-                if (op.Elements == null) continue;
-                foreach (var element in op.Elements)
-                    UI_WorkCanvas.Children.Remove(element);
+                foreach (var op in removed)
+                {
+                    if (op.Elements == null) continue;
+                    foreach (var element in op.Elements)
+                        UI_WorkCanvas.Children.Remove(element);
+                }
             }
 
             UpdateAttemptCounter();
             UpdateDataDependentControls();
+
+            // The plot reads the tables that have just changed, and unlike the counter
+            // it does not follow the history on its own.
+            RefreshPlotTab();
         }
 
-        private void Workshop_Export2DOutlines(object sender, RoutedEventArgs e)
+        private void Workshop_ExportOutlines2D(object sender, RoutedEventArgs e)
         {
             var availability = OutlineShapeExporter.Survey();
 

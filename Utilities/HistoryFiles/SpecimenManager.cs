@@ -51,14 +51,14 @@ namespace DinoLino.Utilities
         public System.Windows.Media.Media3D.Quaternion ModelOrientation { get; set; }
                = System.Windows.Media.Media3D.Quaternion.Identity;
 
-        // Orientation of the specimen within its image, set by Tools ▸ Align Image.
+        // Orientation of the specimen within its image, set by Tools ▸ Align ▸ Align Specimen.
         public AlignmentState Alignment { get; set; } = AlignmentState.None;
 
         // Scale calibration for this specimen's image, set by Tools ▸ Set Scale.
         public ScaleState Calibration { get; set; } = ScaleState.None;
 
         // Contrast, brightness and saturation for this specimen's image, set by
-        // Tools ▸ Picture Adjustment. A correction that suits one specimen's lighting
+        // Tools ▸ Image Adjustments. A correction that suits one specimen's lighting
         // rarely suits the next, so each keeps its own and starts uncorrected.
         public CorrectionState Corrections { get; set; } = CorrectionState.None;
 

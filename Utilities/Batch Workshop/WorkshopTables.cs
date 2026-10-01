@@ -176,6 +176,15 @@ namespace DinoLino.Utilities
                 : new List<string>();
         }
 
+        /// Brings one column back, so a column hidden by mistake can be recovered
+        /// without also un-hiding the ones that were hidden on purpose.
+        public static void Show(string table, string column)
+        {
+            HashSet<string> columns;
+            if (_hidden.TryGetValue(table, out columns) && columns.Remove(column))
+                ProjectSession.MarkChanged();
+        }
+
         public static void Restore(string table)
         {
             if (_hidden.Remove(table)) ProjectSession.MarkChanged();
@@ -334,10 +343,10 @@ namespace DinoLino.Utilities
     {
         /// <summary>One Batch Workshop category as a table.</summary>
         public static WorkshopTable Build(
-            WorkshopCategory category, UndoRedoManager undoRedo, string currentName, ScaleCalibration scale)
+            WorkshopCategory category, UndoRedoManager undoRedo, string currentName, ScaleSource scales)
         {
             var table = BuildFromGroups(
-                KeyFor(category), ColumnGroups(category, undoRedo, scale), undoRedo, currentName);
+                KeyFor(category), ColumnGroups(category, undoRedo, scales), undoRedo, currentName, scales);
 
             table.Title = TitleFor(category);
 
@@ -354,7 +363,8 @@ namespace DinoLino.Utilities
         /// part of a category under no filter key of its own.
         public static WorkshopTable BuildFromGroups(
             string key, IReadOnlyList<WorkshopColumnGroup> groups,
-            UndoRedoManager undoRedo, string currentName, string formulaKey = null)
+            UndoRedoManager undoRedo, string currentName, ScaleSource scales,
+            string formulaKey = null)
         {
             var headers = new List<string>();
 
@@ -375,7 +385,7 @@ namespace DinoLino.Utilities
                 MeasurementHeaders = headers.ToArray()
             };
 
-            if (undoRedo != null) AddBlocks(table, groups, offsets, undoRedo, currentName);
+            if (undoRedo != null) AddBlocks(table, groups, offsets, undoRedo, currentName, scales);
 
             // The user's own columns for this table, calculated from the measurement
             // columns and carried into every export, plot and analysis built from it.
@@ -387,10 +397,15 @@ namespace DinoLino.Utilities
         // One block of rows per specimen: the archived records, then the live one.
         private static void AddBlocks(
             WorkshopTable table, IReadOnlyList<WorkshopColumnGroup> groups, int[] offsets,
-            UndoRedoManager undoRedo, string currentName)
+            UndoRedoManager undoRedo, string currentName, ScaleSource scales)
         {
             foreach (var block in EnumerateBlocks(undoRedo, currentName))
             {
+                // This specimen's own calibration, before any of its cells are written.
+                // The column definitions read it from here, so every block is converted
+                // and labelled with the scale measured against its own image.
+                scales?.Select(block.Record);
+
                 // Each group's operations for this specimen, in the order they were made.
                 var perGroup = new List<List<WorkOperation>>();
                 int rowCount = 0;
@@ -499,7 +514,7 @@ namespace DinoLino.Utilities
             {
                 case WorkshopCategory.Curvature: return "Curvature Data";
                 case WorkshopCategory.Angle: return "Angle Data";
-                case WorkshopCategory.Shape: return "Shape Data";
+                case WorkshopCategory.Shape: return "Draw Data";
                 case WorkshopCategory.OutlineMetadata: return "Outline Metadata";
                 case WorkshopCategory.Efa: return "EFA Data";
                 default: return "2D Outlines";
@@ -512,7 +527,7 @@ namespace DinoLino.Utilities
             {
                 case WorkshopCategory.Curvature: return "curvature_data.csv";
                 case WorkshopCategory.Angle: return "angle_data.csv";
-                case WorkshopCategory.Shape: return "shape_data.csv";
+                case WorkshopCategory.Shape: return "draw_data.csv";
                 case WorkshopCategory.OutlineMetadata: return "outline_metadata.csv";
                 case WorkshopCategory.Efa: return "efa_data.csv";
                 default: return "outlines.csv";
@@ -529,7 +544,7 @@ namespace DinoLino.Utilities
         // spline_ for curvature; tri_ for triangles; rect_, sqr_, ellipse_ and circ_
         // for the four drawn shapes; line_ for lines; outline_ and efa_ for outlines.
         // Note circ_ means the circular arc in the Curvature table and the drawn
-        // circle in the Shape table — separate tables, so the names never meet.
+        // circle in the Draw table — separate tables, so the names never meet.
         //
         // Every length and area reaching FmtLength or FmtArea is in image pixels,
         // which is what those two expect.
@@ -537,8 +552,13 @@ namespace DinoLino.Utilities
         /// One category's column groups, in table order. Callers can take a subset to
         /// table a single operation kind on its own.
         public static List<WorkshopColumnGroup> ColumnGroups(
-            WorkshopCategory category, UndoRedoManager undoRedo, ScaleCalibration scale)
+            WorkshopCategory category, UndoRedoManager undoRedo, ScaleSource scales)
         {
+            // The column definitions below read the source as they are filled, so it
+            // stands in for a caller that had none. Every specimen then reads as
+            // unscaled, which is what a table with no calibration behind it should say.
+            scales = scales ?? new ScaleSource(null, null);
+
             switch (category)
             {
                 case WorkshopCategory.Curvature:
@@ -552,7 +572,7 @@ namespace DinoLino.Utilities
                                 Col("circ_centangle", o => GeomOpHistoryWindow.Fmt(((CircularArcOperation)o).CentralAngle)),
                                 Col("circ_chordarc", o => GeomOpHistoryWindow.Fmt(((CircularArcOperation)o).ChordArcRatio)),
                                 Col("circ_risespan", o => GeomOpHistoryWindow.Fmt(((CircularArcOperation)o).AspectRatio)),
-                                Col("circ_radius", o => GeomOpHistoryWindow.FmtLength(((CircularArcOperation)o).RadiusImagePixels, scale))
+                                Col("circ_radius", o => GeomOpHistoryWindow.FmtLength(((CircularArcOperation)o).RadiusImagePixels, scales.Current))
                             }
                         },
                         new WorkshopColumnGroup
@@ -563,7 +583,7 @@ namespace DinoLino.Utilities
                                 Col("para_chordarc", o => GeomOpHistoryWindow.Fmt(((ParabolaOperation)o).PChordArcRatio)),
                                 Col("para_risespan", o => GeomOpHistoryWindow.Fmt(((ParabolaOperation)o).RiseSpanRatio)),
                                 Col("para_vertcurv", o => GeomOpHistoryWindow.Fmt(((ParabolaOperation)o).VertexCurvature)),
-                                Col("para_radius", o => GeomOpHistoryWindow.FmtLength(((ParabolaOperation)o).VertexRadiusImagePixels, scale))
+                                Col("para_radius", o => GeomOpHistoryWindow.FmtLength(((ParabolaOperation)o).VertexRadiusImagePixels, scales.Current))
                             }
                         },
                         new WorkshopColumnGroup
@@ -573,7 +593,7 @@ namespace DinoLino.Utilities
                             {
                                 Col("spline_turnangle", o => GeomOpHistoryWindow.Fmt(((SplineOperation)o).TurningAngleArcRatio)),
                                 Col("spline_tortuosity", o => GeomOpHistoryWindow.Fmt(((SplineOperation)o).SChordArcRatio)),
-                                Col("spline_length", o => GeomOpHistoryWindow.FmtLength(((SplineOperation)o).SplineLengthImagePixels, scale))
+                                Col("spline_length", o => GeomOpHistoryWindow.FmtLength(((SplineOperation)o).SplineLengthImagePixels, scales.Current))
                             }
                         }
                     };
@@ -590,7 +610,21 @@ namespace DinoLino.Utilities
                                 Col("tri_angleb", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleB)),
                                 Col("tri_anglec", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleC)),
                                 Col("tri_aspect", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).TriAspectRatio)),
-                                Col("tri_area", o => GeomOpHistoryWindow.FmtArea(((GetAngleOperation)o).TriAreaImagePixels, scale))
+                                Col("tri_area", o => GeomOpHistoryWindow.FmtArea(((GetAngleOperation)o).TriAreaImagePixels, scales.Current))
+                            }
+                        },
+
+                        // A group of its own, so attempt n means the nth angle
+                        // measured rather than the nth thing drawn in this mode.
+                        new WorkshopColumnGroup
+                        {
+                            OperationType = typeof(AxisAngleOperation),
+                            Columns = new List<WorkshopColumn>
+                            {
+                                Col("axis_angle", o =>
+                                    GeomOpHistoryWindow.Fmt(((AxisAngleOperation)o).AxisAngleDegrees)),
+                                Col("spec_aligned", o =>
+                                    ((AxisAngleOperation)o).MeasuredAgainstAxis ? "yes" : "no")
                             }
                         }
                     };
@@ -601,21 +635,26 @@ namespace DinoLino.Utilities
                     // nth ellipse, and so on, rather than the nth shape of any kind.
                     return new List<WorkshopColumnGroup>
                     {
-                        ShapeGroup(ShapeConstraint.Rectangle, "rect", hasAspect: true, scale: scale),
-                        ShapeGroup(ShapeConstraint.Square, "sqr", hasAspect: false, scale: scale),
-                        ShapeGroup(ShapeConstraint.Ellipse, "ellipse", hasAspect: true, scale: scale),
-                        ShapeGroup(ShapeConstraint.Circle, "circ", hasAspect: false, scale: scale),
+                        ShapeGroup(ShapeConstraint.Rectangle, "rect", hasAspect: true, scales: scales),
+                        ShapeGroup(ShapeConstraint.Square, "sqr", hasAspect: false, scales: scales),
+                        ShapeGroup(ShapeConstraint.Ellipse, "ellipse", hasAspect: true, scales: scales),
+                        ShapeGroup(ShapeConstraint.Circle, "circ", hasAspect: false, scales: scales),
 
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(LineOperation),
                             Columns = new List<WorkshopColumn>
                             {
-                                Col("line_length", o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineLengthImagePixels, scale)),
-                                Col("line_xdist",  o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineDeltaXImagePixels, scale)),
-                                Col("line_ydist",  o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineDeltaYImagePixels, scale)),
+                                Col("line_length", o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineLengthImagePixels, scales.Current)),
+                                Col("line_xdist",  o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineDeltaXImagePixels, scales.Current)),
+                                Col("line_ydist",  o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineDeltaYImagePixels, scales.Current)),
                                 Col("line_ratio",  o => GeomOpHistoryWindow.FmtRatio(((LineOperation)o).LineLengthRatio)),
-                                Col("line_angle",  o => GeomOpHistoryWindow.FmtRatio(((LineOperation)o).LineAngle))
+                                Col("line_angle",  o => GeomOpHistoryWindow.FmtRatio(((LineOperation)o).LineAngle)),
+
+                                // X and Y distance are taken on the specimen's axes
+                                // when it has them and on the image's when it does
+                                // not, so a table of lines has to say which it was.
+                                Col("spec_aligned", o => ((LineOperation)o).MeasuredAgainstAxis ? "yes" : "no")
                             }
                         }
                     };
@@ -630,16 +669,16 @@ namespace DinoLino.Utilities
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("outline_aspect", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).AspectRatio)),
-                                Col("outline_perim", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).PerimeterImagePixels, scale)),
-                                Col("outline_area", o => GeomOpHistoryWindow.FmtArea(((OutlineOperation)o).AreaImagePixels, scale)),
-                                Col("outline_maxlength", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MaxLengthImagePixels, scale)),
-                                Col("outline_maxwidth", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MaxWidthImagePixels, scale)),
+                                Col("outline_perim", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).PerimeterImagePixels, scales.Current)),
+                                Col("outline_area", o => GeomOpHistoryWindow.FmtArea(((OutlineOperation)o).AreaImagePixels, scales.Current)),
+                                Col("outline_maxlength", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MaxLengthImagePixels, scales.Current)),
+                                Col("outline_maxwidth", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MaxWidthImagePixels, scales.Current)),
                                 Col("outline_circ", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).Circularity)),
                                 Col("outline_convexity", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).Convexity)),
                                 Col("outline_solidity", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).Solidity)),
                                 Col("outline_sumturn", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).SumTurningAngles)),
                                 Col("outline_turnlength", o => GeomOpHistoryWindow.Fmt4(((OutlineOperation)o).TurningAngleLength)),
-                                Col("outline_spacing", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MeasurementSpacingImagePixels, scale)),
+                                Col("outline_spacing", o => GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).MeasurementSpacingImagePixels, scales.Current)),
                                 Col("outline_points", o => ((OutlineOperation)o).MeasurementPointCount.ToString())
                             }
                         }
@@ -659,9 +698,9 @@ namespace DinoLino.Utilities
                                 Col("outline_vertices", o => VertexCount((OutlineOperation)o).ToString()),
                                 Col("outline_hasmeta", o => ((OutlineOperation)o).HasMetadata ? "yes" : "no"),
                                 Col("outline_perim", o => ((OutlineOperation)o).HasMetadata
-                                    ? GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).PerimeterImagePixels, scale) : ""),
+                                    ? GeomOpHistoryWindow.FmtLength(((OutlineOperation)o).PerimeterImagePixels, scales.Current) : ""),
                                 Col("outline_area", o => ((OutlineOperation)o).HasMetadata
-                                    ? GeomOpHistoryWindow.FmtArea(((OutlineOperation)o).AreaImagePixels, scale) : "")
+                                    ? GeomOpHistoryWindow.FmtArea(((OutlineOperation)o).AreaImagePixels, scales.Current) : "")
                             }
                         }
                     };
@@ -672,7 +711,7 @@ namespace DinoLino.Utilities
         /// A square and a circle are equilateral by construction, so their aspect
         /// ratio is always 1 and no column is emitted for it.
         private static WorkshopColumnGroup ShapeGroup(
-            ShapeConstraint kind, string prefix, bool hasAspect, ScaleCalibration scale)
+            ShapeConstraint kind, string prefix, bool hasAspect, ScaleSource scales)
         {
             var group = new WorkshopColumnGroup
             {
@@ -685,7 +724,7 @@ namespace DinoLino.Utilities
                     o => GeomOpHistoryWindow.Fmt(((ShapeOperation)o).DrawAspectRatio)));
 
             group.Columns.Add(Col(prefix + "_area",
-                o => GeomOpHistoryWindow.FmtArea(((ShapeOperation)o).ShapeAreaImagePixels, scale)));
+                o => GeomOpHistoryWindow.FmtArea(((ShapeOperation)o).ShapeAreaImagePixels, scales.Current)));
 
             return group;
         }

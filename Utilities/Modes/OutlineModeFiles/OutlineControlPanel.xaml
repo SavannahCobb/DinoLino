@@ -129,7 +129,7 @@
                  IsChecked="{Binding PushOutlineMode, Mode=TwoWay}"
                  MinHeight="26"
                  Margin="0,8,0,0"
-                 ToolTip="Click and drag from inside the outline outward to expand it — or hold Ctrl and move the cursor."/>
+                 ToolTip="Click and drag from inside the outline outward to expand it — or hold Alt and move the cursor."/>
 
             <StackPanel Visibility="{Binding PushOutlineMode,
                                      Converter={StaticResource BoolToVis}}">
@@ -212,7 +212,7 @@
             </StackPanel>
         </StackPanel>
 
-        <!-- Generate Metadata.
+        <!-- Measure Outline.
              The Checked/Unchecked handlers trigger GenerateMetadata /
              ClearEFDPreview — the OutlineMetadataMode SETTER no longer runs
              work as a side effect of the two-way binding.
@@ -221,7 +221,7 @@
              the stroke via the hand-draw binding) BEFORE raising Checked, so
              a veto inside Checked can never fire — it must intercept the
              input before any group state changes. -->
-        <RadioButton Content="Generate Metadata"
+        <RadioButton Content="Measure Outline"
              x:Name="MetadataRadio"
              GroupName="OutlineTool"
              IsChecked="{Binding OutlineMetadataMode, Mode=TwoWay}"

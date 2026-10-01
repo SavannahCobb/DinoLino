@@ -208,7 +208,7 @@ namespace DinoLino
             foreach (var category in PlotCategories)
             {
                 var table = WorkshopTables.Build(
-                    category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                    category, UndoRedoManager, SpecimenManager.DisplayName, TableScales());
 
                 string group = WorkshopTables.TitleFor(category);
 
@@ -232,7 +232,7 @@ namespace DinoLino
             }
 
             var efa = WorkshopTables.Build(
-                WorkshopCategory.Efa, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                WorkshopCategory.Efa, UndoRedoManager, SpecimenManager.DisplayName, TableScales());
 
             // Outlines are analysed to whatever harmonic count each one supports,
             // so the deepest specimen has coefficients the shallowest never
@@ -423,7 +423,7 @@ namespace DinoLino
         }
 
         /// Drops the staged PCA variables and any result fitted from them. Used by
-        /// Clear All, since both describe data that no longer exists.
+        /// File ▸ New Project, since both describe data that no longer exists.
         internal void ClearPcaAnalysis()
         {
             _pcaDataFrame.Clear();
@@ -571,7 +571,7 @@ namespace DinoLino
             foreach (var category in PcaCategories)
             {
                 var table = WorkshopTables.Build(
-                    category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                    category, UndoRedoManager, SpecimenManager.DisplayName, TableScales());
 
                 // Blocks are the same for every category, so the first table seen
                 // fixes the specimen order.
@@ -634,7 +634,7 @@ namespace DinoLino
             foreach (var category in PlotCategories)
             {
                 var table = WorkshopTables.Build(
-                    category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                    category, UndoRedoManager, SpecimenManager.DisplayName, TableScales());
 
                 for (int c = 0; c < table.MeasurementHeaders.Length; c++)
                 {

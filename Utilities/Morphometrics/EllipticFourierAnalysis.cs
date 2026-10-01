@@ -15,6 +15,22 @@ namespace DinoLino.Utilities
         Degenerate
     }
 
+    /// <summary>Which direction the normalization turns onto +X.</summary>
+    public enum EfdRotationReference
+    {
+        /// The major axis of the outline's own first-harmonic ellipse. Needs nothing
+        /// set up beforehand and is the convention published coefficients are usually
+        /// given in, but it takes each outline's orientation from its own shape, so
+        /// two specimens held at different angles to their own anatomy come out the
+        /// same way up.
+        FirstHarmonic,
+
+        /// The specimen's X axis, as drawn with Tools, Align, Align Specimen. Keeps the
+        /// difference between specimens that genuinely sit at different angles to
+        /// their own anatomy, at the cost of needing an axis drawn on each one.
+        DrawnAxis
+    }
+
     /// <summary>Raw elliptic Fourier coefficients for one outline, plus the DC term.</summary>
     public sealed class EfdCoefficients
     {
@@ -61,15 +77,24 @@ namespace DinoLino.Utilities
         /// <summary>Phase shift removed to align the start point.</summary>
         public double StartPhase { get; }
 
-        /// <summary>Rotation removed to align the first-harmonic major axis with +X.</summary>
+        /// <summary>Rotation removed to bring the chosen reference onto +X.</summary>
         public double Orientation { get; }
+
+        /// <summary>Which reference the rotation was actually taken from.</summary>
+        public EfdRotationReference RotationReference { get; }
+
+        /// True when the drawn axis was asked for and the specimen had none, so the
+        /// first harmonic stood in for it.
+        public bool FellBackToFirstHarmonic { get; }
 
         public double AxisRatio => FirstHarmonicMajor > 1e-12 ? FirstHarmonicMinor / FirstHarmonicMajor : 1.0;
 
         public EfdNormalizationResult(
             double[] coefficients, EfdNormalizationStatus status,
             double firstHarmonicMajor, double firstHarmonicMinor,
-            double startPhase, double orientation)
+            double startPhase, double orientation,
+            EfdRotationReference rotationReference = EfdRotationReference.FirstHarmonic,
+            bool fellBackToFirstHarmonic = false)
         {
             Coefficients = coefficients ?? Array.Empty<double>();
             Status = status;
@@ -77,6 +102,8 @@ namespace DinoLino.Utilities
             FirstHarmonicMinor = firstHarmonicMinor;
             StartPhase = startPhase;
             Orientation = orientation;
+            RotationReference = rotationReference;
+            FellBackToFirstHarmonic = fellBackToFirstHarmonic;
         }
     }
 
@@ -186,14 +213,31 @@ namespace DinoLino.Utilities
         private const double DegenerateEpsilon = 1e-10;
         private const double NearlyCircularAxisRatio = 0.95;
 
-        public static EfdNormalizationResult Normalize(EfdCoefficients raw)
+        /// Rotation is taken from the outline's own first harmonic unless a drawn
+        /// axis is asked for and supplied; size and start point are normalized the
+        /// same way either way. drawnAxisRadians is the direction of the specimen's
+        /// +X axis, in the same space as the contour points, or null when it has none.
+        public static EfdNormalizationResult Normalize(
+            EfdCoefficients raw,
+            EfdRotationReference reference = EfdRotationReference.FirstHarmonic,
+            double? drawnAxisRadians = null)
         {
             int harmonics = raw?.Harmonics ?? 0;
             double[] src = raw?.Coefficients ?? Array.Empty<double>();
             var normalized = new double[harmonics * 4];
 
+            bool useDrawnAxis = reference == EfdRotationReference.DrawnAxis
+                                && drawnAxisRadians.HasValue
+                                && !double.IsNaN(drawnAxisRadians.Value)
+                                && !double.IsInfinity(drawnAxisRadians.Value);
+            bool fellBack = reference == EfdRotationReference.DrawnAxis && !useDrawnAxis;
+            EfdRotationReference used = useDrawnAxis
+                ? EfdRotationReference.DrawnAxis
+                : EfdRotationReference.FirstHarmonic;
+
             if (harmonics < 1 || src.Length < 4)
-                return new EfdNormalizationResult(normalized, EfdNormalizationStatus.Degenerate, 0, 0, 0, 0);
+                return new EfdNormalizationResult(
+                    normalized, EfdNormalizationStatus.Degenerate, 0, 0, 0, 0, used, fellBack);
 
             double a1 = src[0], b1 = src[1], c1 = src[2], d1 = src[3];
 
@@ -215,11 +259,15 @@ namespace DinoLino.Utilities
             if (major < DegenerateEpsilon)
             {
                 Array.Copy(src, normalized, normalized.Length);
-                return new EfdNormalizationResult(normalized, EfdNormalizationStatus.Degenerate, major, minor, theta, 0);
+                return new EfdNormalizationResult(
+                    normalized, EfdNormalizationStatus.Degenerate, major, minor, theta, 0,
+                    EfdRotationReference.FirstHarmonic, fellBack);
             }
 
-            // Rotate so the major axis lies on +X.
-            double psi = Math.Atan2(cStar, aStar);
+            // Rotate so the chosen reference lies on +X. The drawn axis is already an
+            // angle in the contour's own space, so it goes straight in where the first
+            // harmonic's major axis would have been measured.
+            double psi = useDrawnAxis ? drawnAxisRadians.Value : Math.Atan2(cStar, aStar);
             double cosP = Math.Cos(psi), sinP = Math.Sin(psi);
 
             for (int h = 1; h <= harmonics; h++)
@@ -241,8 +289,12 @@ namespace DinoLino.Utilities
                 normalized[k + 3] = (-bhr * sinP + dhr * cosP) / major;
             }
 
-            // Fix the mirror branch so the same contour normalizes to one canonical sign.
-            if (normalized.Length >= 4 && normalized[3] < 0)
+            // Fix the mirror branch so the same contour normalizes to one canonical
+            // sign. Only under the first harmonic, where the sign is an artefact of
+            // which way round the contour was traced: measured against a drawn axis it
+            // says which way the shape leans off the specimen's own axis, which is a
+            // real difference between two specimens rather than one to normalize away.
+            if (!useDrawnAxis && normalized.Length >= 4 && normalized[3] < 0)
             {
                 for (int h = 1; h <= harmonics; h++)
                 {
@@ -257,7 +309,8 @@ namespace DinoLino.Utilities
                 ? EfdNormalizationStatus.NearlyCircular
                 : EfdNormalizationStatus.Ok;
 
-            return new EfdNormalizationResult(normalized, status, major, minor, theta, psi);
+            return new EfdNormalizationResult(
+                normalized, status, major, minor, theta, psi, used, fellBack);
         }
     }
 
@@ -330,16 +383,27 @@ namespace DinoLino.Utilities
         /// <summary>First-harmonic minor/major axis ratio.</summary>
         public double FirstHarmonicAxisRatio => _norm?.AxisRatio ?? 1.0;
 
+        /// <summary>Which reference the last normalization turned onto +X.</summary>
+        public EfdRotationReference RotationReference =>
+            _norm?.RotationReference ?? EfdRotationReference.FirstHarmonic;
+
+        /// <summary>True when a drawn axis was asked for and the specimen had none.</summary>
+        public bool FellBackToFirstHarmonic => _norm?.FellBackToFirstHarmonic ?? false;
+
         /// <summary>Full raw result from the last computation.</summary>
         public EfdCoefficients LastRaw => _raw;
 
         /// <summary>Full normalization result from the last computation.</summary>
         public EfdNormalizationResult LastNormalization => _norm;
 
-        public double[] ComputeNormalized(List<Point> pts, int harmonics, bool canonicalizeWinding = true)
+        public double[] ComputeNormalized(
+            List<Point> pts, int harmonics,
+            EfdRotationReference reference = EfdRotationReference.FirstHarmonic,
+            double? drawnAxisRadians = null,
+            bool canonicalizeWinding = true)
         {
             _raw = EllipticFourierCalculator.Compute(pts, harmonics, canonicalizeWinding);
-            _norm = EllipticFourierNormalizer.Normalize(_raw);
+            _norm = EllipticFourierNormalizer.Normalize(_raw, reference, drawnAxisRadians);
             return _norm.Coefficients;
         }
 

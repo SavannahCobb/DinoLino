@@ -108,6 +108,9 @@ namespace DinoLino
 
             ApplyFontSize(settings.FontSize);
             ApplyFontFamily(new FontFamily(settings.FontFamily));
+
+            _scaleOverwrite = settings.ScaleOverwrite;
+            _askBeforeClearSpecimen = settings.AskBeforeClearSpecimen;
         }
 
         /// Hands a color to every work mode, so all four tabs agree from the moment it
@@ -185,7 +188,10 @@ namespace DinoLino
                 LineThickness = _lineThickness,
 
                 FontFamily = _currentFont?.Source,
-                FontSize = _currentFontSize
+                FontSize = _currentFontSize,
+
+                ScaleOverwrite = _scaleOverwrite,
+                AskBeforeClearSpecimen = _askBeforeClearSpecimen
             }
             .Save();
         }

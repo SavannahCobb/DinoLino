@@ -546,7 +546,7 @@ namespace DinoLino
                 || operation is ParabolaOperation
                 || operation is SplineOperation) return CurvatureMode;
 
-            if (operation is GetAngleOperation) return GetAngleMode;
+            if (operation is GetAngleOperation || operation is AxisAngleOperation) return GetAngleMode;
             if (operation is ShapeOperation || operation is LineOperation) return DrawMode;
             if (operation is OutlineOperation) return OutlineMode;
 
@@ -563,7 +563,7 @@ namespace DinoLino
 
                 WorkshopCategory category;
                 if (!Enum.TryParse(saved.Category, out category)) continue;
-                if (CustomTableSelection.IsSelected(category, saved.Header)) continue;
+                if (CustomTableSelection.IsSelected(saved.Header)) continue;
 
                 CustomTableSelection.Toggle(category, saved.Header);
             }
@@ -611,12 +611,12 @@ namespace DinoLino
             if (string.IsNullOrEmpty(key)) return null;
 
             if (string.Equals(key, CustomTable.Key, StringComparison.OrdinalIgnoreCase))
-                return CustomTable.Build(UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                return CustomTable.Build(UndoRedoManager, SpecimenManager.DisplayName, TableScales());
 
             foreach (WorkshopCategory category in Enum.GetValues(typeof(WorkshopCategory)))
             {
                 if (string.Equals(WorkshopTables.KeyFor(category), key, StringComparison.OrdinalIgnoreCase))
-                    return WorkshopTables.Build(category, UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration);
+                    return WorkshopTables.Build(category, UndoRedoManager, SpecimenManager.DisplayName, TableScales());
             }
 
             return null;

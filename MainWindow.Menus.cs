@@ -1,6 +1,8 @@
 ﻿using DinoLino.Utilities;
 using DinoLino.Utilities.Modes;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -19,8 +21,12 @@ namespace DinoLino
 
         private void Menu_About(object sender, RoutedEventArgs e)
         {
+            // Set here rather than left to PopupChrome: a window shown with
+            // ShowDialog is modal before its Loaded handler runs, and WPF will not
+            // take an owner after that.
             var about = new AboutWindow
             {
+                Owner = this,
                 FontSize = _currentFontSize,
                 FontFamily = _currentFont
             };
@@ -31,6 +37,7 @@ namespace DinoLino
         {
             var userguide = new UserGuideWindow
             {
+                Owner = this,
                 FontFamily = _currentFont,
                 FontSize = _currentFontSize
             };
@@ -70,15 +77,69 @@ namespace DinoLino
 
         // ---- History ----
 
+        // The one operation history window. It is not modal and it edits, so a second
+        // copy would show stale tables beside the live one and the two would disagree
+        // about which tables are staged for the workbook.
+        private GeomOpHistoryWindow _historyWindow;
+
         private void Menu_SeeHistory(object sender, RoutedEventArgs e)
         {
-            var window = new GeomOpHistoryWindow(UndoRedoManager, SpecimenManager.DisplayName, ScaleCalibration)
+            if (_historyWindow != null)
+            {
+                _historyWindow.Activate();
+                return;
+            }
+
+            // The window edits as well as reads now, so it is given the clear the rest of
+            // the program uses, a way to tell the workspace what it took, and the name of
+            // the loaded specimen as something to read rather than a value to keep.
+            _historyWindow = new GeomOpHistoryWindow(
+                UndoRedoManager, () => SpecimenManager.DisplayName, TableScales(),
+                ClearLoadedSpecimen, OnHistoryChanged)
             {
                 Owner = this,
                 FontSize = _currentFontSize,
                 FontFamily = _currentFont
             };
-            window.Show();
+
+            _historyWindow.Closed += (s, args) => _historyWindow = null;
+            _historyWindow.Show();
+        }
+
+        // Waits out a burst of refresh requests before redrawing once.
+        private DispatcherTimer _historyRefreshTimer;
+
+        /// Redraws the operation history window, if it is open, for the changes that never
+        /// reach the undo history and so cannot announce themselves to it: a scale
+        /// measured, a group assigned, a specimen renamed, an outline's metrics generated,
+        /// a project opened or reset.
+        ///
+        /// Several requests arrive for one change — a measurement raises two properties, a
+        /// rename one per keystroke — and a table of a hundred columns is not cheap to
+        /// draw, so the requests are collapsed and the window is redrawn once the burst is
+        /// over. Nothing reads the window in between, so the wait costs nothing.
+        internal void RefreshHistoryWindow()
+        {
+            if (_historyWindow == null) return;
+
+            if (_historyRefreshTimer == null)
+            {
+                _historyRefreshTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(200)
+                };
+
+                _historyRefreshTimer.Tick += (s, e) =>
+                {
+                    _historyRefreshTimer.Stop();
+                    _historyWindow?.RefreshTables();
+                };
+            }
+
+            // Restarting rather than starting: each new request pushes the redraw back, so
+            // a name being typed redraws once at the end instead of once per letter.
+            _historyRefreshTimer.Stop();
+            _historyRefreshTimer.Start();
         }
 
         private void Menu_ExportHistory(object sender, RoutedEventArgs e)
@@ -86,7 +147,7 @@ namespace DinoLino
             GeomOpHistoryWindow.ExportAllOperationHistory(
                 UndoRedoManager,
                 SpecimenManager.DisplayName,
-                ScaleCalibration);
+                TableScales());
         }
 
         // ---- Image cache ----
@@ -146,9 +207,134 @@ namespace DinoLino
             BeginScaleCapture();
         }
 
+
+        // ---- Passing one specimen's scale to others ----
+
+        /// A standing answer to the overwrite question, for a user who has asked to stop
+        /// being asked. Ask is the state in which the question is still put.
+        private ScaleOverwriteAnswer _scaleOverwrite = ScaleOverwriteAnswer.Ask;
+
+        /// Both items need a scale to pass on, and the second needs somewhere to pass it
+        /// to. The ticks in Directory ▸ Sample change without announcing it, so what is
+        /// on offer is worked out as the submenu opens rather than kept in step with them.
+        private void MenuScale_SubmenuOpened(object sender, RoutedEventArgs e)
+        {
+            bool haveScale = ScaleCalibration.IsCalibrated;
+
+            UI_MenuApplyScaleAll.IsEnabled = haveScale && ScaleTargetsAll().Count > 0;
+            UI_MenuApplyScaleSelected.IsEnabled = haveScale && ScaleTargetsTicked().Count > 0;
+
+            UI_MenuApplyScaleSelected.ToolTip = !haveScale
+                ? "Set a scale on this specimen first."
+                : ScaleTargetsTicked().Count > 0
+                    ? "Give this specimen's scale to the ones ticked in Directory ▸ Sample."
+                    : "Tick the specimens in Directory ▸ Sample first.";
+
+            UI_MenuApplyScaleAll.ToolTip = haveScale
+                ? "Give every other specimen this specimen's scale. Anything already measured on its own image is asked about first."
+                : "Set a scale on this specimen first.";
+        }
+
+        private void Menu_ApplyScaleAll(object sender, RoutedEventArgs e)
+            => ApplyScaleToSpecimens(ScaleTargetsAll());
+
+        private void Menu_ApplyScaleSelected(object sender, RoutedEventArgs e)
+            => ApplyScaleToSpecimens(ScaleTargetsTicked());
+
+        /// Every specimen that could take a scale: one that stands for a picture, has not
+        /// been deleted, and is not the one the scale is coming from. Copying onto the
+        /// source would mark its own measured scale as borrowed.
+        private List<Specimen> ScaleTargetsAll() =>
+            SpecimenManager.Specimens
+                .Where(s => s != null
+                         && s.FileName != null
+                         && !s.Deleted
+                         && !ReferenceEquals(s, SpecimenManager.CurrentSpecimen))
+                .ToList();
+
+        /// <summary>The same, narrowed to what is ticked in Directory ▸ Sample.</summary>
+        private List<Specimen> ScaleTargetsTicked() =>
+            ScaleTargetsAll().Where(_sampleChecked.Contains).ToList();
+
+        /// Gives the loaded specimen's scale to the specimens named, marked as inherited
+        /// so it stays clear which specimens were actually measured.
+        private void ApplyScaleToSpecimens(List<Specimen> targets)
+        {
+            var source = ScaleCalibration.State;
+            if (!source.IsSet || targets == null || targets.Count == 0) return;
+
+            // A scale measured on a specimen's own image is a reading somebody took, so it
+            // is not written over without being asked about. One already borrowed is.
+            var measured = targets
+                .Where(t => t.Calibration.IsSet && !t.Calibration.Inherited)
+                .ToList();
+
+            var answer = _scaleOverwrite;
+
+            if (measured.Count > 0 && answer == ScaleOverwriteAnswer.Ask)
+            {
+                bool remember;
+
+                var asked = ScaleApplyWindow.Ask(
+                    this, SpecimenManager.NameOf(SpecimenManager.CurrentSpecimen),
+                    source, targets.Count, measured.Count, _currentFont, _currentFontSize,
+                    out remember);
+
+                // Cancelled: not one specimen is touched.
+                if (asked == null) return;
+
+                answer = asked.Value;
+                if (remember) _scaleOverwrite = answer;
+            }
+
+            var taking = answer == ScaleOverwriteAnswer.Overwrite
+                ? targets
+                : targets.Where(t => !measured.Contains(t)).ToList();
+
+            var borrowed = source.AsInherited();
+            int changed = 0;
+
+            foreach (var target in taking)
+            {
+                if (target.Calibration == borrowed) continue;
+
+                target.Calibration = borrowed;
+                changed++;
+            }
+
+            if (changed > 0) ProjectSession.MarkChanged();
+
+            // The roster is where an inherited scale is read off, so it is redrawn if the
+            // user is looking at it. It is rebuilt on its own when that tab is opened.
+            if (_sampleTabSelected) RebuildSampleList();
+
+            ReportScaleApplied(changed, taking.Count, targets.Count - taking.Count);
+        }
+
+        private void ReportScaleApplied(int changed, int applied, int kept)
+        {
+            string what = changed == 0
+                ? applied == 0
+                    ? "No specimen took the scale."
+                    : "Every specimen chosen already had this scale."
+                : changed == 1
+                    ? "1 specimen took this specimen's scale."
+                    : changed + " specimens took this specimen's scale.";
+
+            if (kept > 0)
+            {
+                what += kept == 1
+                    ? "\n\n1 specimen kept the scale measured on its own image."
+                    : "\n\n" + kept + " specimens kept the scale measured on their own images.";
+            }
+
+            MessageBox.Show(this, what, "Apply Scale",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         // ---- Alignment ----
 
-        /// Arms the axis-drawing capture (Tools ▸ Align Image, and the control
+        /// Arms the axis-drawing capture (Tools ▸ Align ▸ Align Specimen, and the control
         /// panel's Align button). The capture itself lives in the alignment file,
         /// which owns BeginAlignCapture.
         private void Menu_AlignImage(object sender, RoutedEventArgs e)
@@ -164,10 +350,13 @@ namespace DinoLino
         /// the menu items cannot drift apart from the buttons.
         internal void SetImageToolsEnabled(bool enabled)
         {
-            UI_MenuAlignImage.IsEnabled = enabled;
+            UI_MenuAlign.IsEnabled = enabled;
             UI_AlignButton.IsEnabled = enabled;
 
-            UI_MenuSetScale.IsEnabled = enabled;
+            // The compass goes off with the picture and comes back with the next one.
+            RefreshImageAxes();
+
+            UI_MenuScale.IsEnabled = enabled;
             UI_ScaleButton.IsEnabled = enabled;
 
             UI_MenuScreenshot.IsEnabled = enabled;
@@ -177,33 +366,17 @@ namespace DinoLino
             UI_MenuRotate.IsEnabled = enabled;
         }
 
-        /// Enables Clear Specimen Data only while the loaded specimen has something
+        /// Enables Clear Specimen Measurements only while the loaded specimen has something
         /// to clear. Undone operations count: they are still on the specimen's
         /// record and the button discards them along with the rest.
         internal void UpdateClearSpecimenEnabled()
         {
-            UI_ClearSpecimenButton.IsEnabled =
-                UndoRedoManager.CanUndo || UndoRedoManager.CanRedo;
-        }
+            bool anything = UndoRedoManager.CanUndo || UndoRedoManager.CanRedo;
 
-        /// Enables Clear All only while the session holds at least one measurement,
-        /// in an archived specimen or in the live one. Undone operations count: they
-        /// are still recoverable, and the reset discards them along with everything
-        /// else.
-        internal void UpdateClearAllEnabled()
-        {
-            bool anyArchived = false;
-            foreach (var record in UndoRedoManager.Archive)
-            {
-                if (record.Operations.Count > 0)
-                {
-                    anyArchived = true;
-                    break;
-                }
-            }
-
-            UI_AAClearButton.IsEnabled =
-                anyArchived || UndoRedoManager.CanUndo || UndoRedoManager.CanRedo;
+            // One rule for both ways in, so the menu item and the button are never
+            // offering different answers to the same question.
+            UI_ClearSpecimenButton.IsEnabled = anything;
+            UI_MenuClearSpecimen.IsEnabled = anything;
         }
 
         /// Refreshes every control whose availability depends on what the session
@@ -211,8 +384,12 @@ namespace DinoLino
         internal void UpdateDataDependentControls()
         {
             UpdateClearSpecimenEnabled();
-            UpdateClearAllEnabled();
             UpdateWorkshopButtonsEnabled();
+
+            // Everything that changes what the tables hold arrives here, including the
+            // outline metrics, which are stamped on after the operation was recorded and so
+            // never reach the history window on their own.
+            RefreshHistoryWindow();
         }
 
         // ---- Tips ----
@@ -306,9 +483,23 @@ namespace DinoLino
 
         /// Toggles the image-axes compass. The overlay itself lives in the alignment
         /// file, which owns SetImageAxesVisible.
-        private void Menu_SeeImageAxes(object sender, RoutedEventArgs e)
+        private void Menu_SeeImageAxes(object sender, RoutedEventArgs e) => RefreshImageAxes();
+
+        /// The compass follows the tick and the picture together. It describes a
+        /// specimen's orientation, so it means nothing with no specimen on screen — and
+        /// its menu item sits inside Tools ▸ Align, which is greyed out until a picture
+        /// is loaded, so a compass left showing over an empty workspace could not
+        /// otherwise be dismissed. The tick itself is left alone either way: it is the
+        /// user's standing preference, not a property of what happens to be loaded.
+        private void RefreshImageAxes() =>
+            SetImageAxesVisible(UI_SeeImageAxes.IsChecked && WorkingImage != null);
+
+        /// Toggles the scalebar. The overlay itself lives in the calibration file,
+        /// which owns UpdateScaleBarVisibility and decides whether the bar can be shown
+        /// at all.
+        private void Menu_ViewScaleBar(object sender, RoutedEventArgs e)
         {
-            SetImageAxesVisible(UI_SeeImageAxes.IsChecked);
+            UpdateScaleBarVisibility();
         }
 
         /// Toggles the mini-map overview panel. The panel itself lives in
@@ -382,7 +573,7 @@ namespace DinoLino
 
         // ---- Settings ----
 
-        /// Toggles whether the Settings menu choices are kept for later sessions. The reading
+        /// Toggles whether the settings choices are kept for later sessions. The reading
         /// and writing lives in MainWindow_Settings.cs, which owns SetSaveSettings.
         private void Menu_SaveSettings(object sender, RoutedEventArgs e)
         {

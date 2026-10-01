@@ -392,8 +392,60 @@ namespace DinoLino.Utilities.Modes
                     Converter = new BooleanToVisibilityConverter()
                 });
 
+            // No GroupName: two RadioButtons under one parent already exclude each
+            // other, and WPF keeps named groups in one table for the whole thread
+            // rather than per window.
+            var rotationRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(8, 2, 8, 2)
+            };
+
+            RadioButton MakeRotationOption(string label, EfdRotationReference reference, string tooltip)
+            {
+                var option = new RadioButton
+                {
+                    Content = label,
+                    Tag = reference.ToString(),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 12, 0),
+                    ToolTip = tooltip,
+                    IsChecked = _mode.EfdRotation == reference
+                };
+
+                option.PreviewMouseDown += (s2, ev2) =>
+                {
+                    if (TryVetoUnfinishedHandStroke()) ev2.Handled = true;
+                };
+
+                option.Checked += (s2, ev2) =>
+                    _mode.SelectRotationReference(((RadioButton)s2).Tag as string);
+
+                return option;
+            }
+
+            rotationRow.Children.Add(new TextBlock
+            {
+                Text = "Rotation:",
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
+            rotationRow.Children.Add(MakeRotationOption(
+                "First harmonic", EfdRotationReference.FirstHarmonic,
+                "Turns each outline onto the major axis of its own first-harmonic ellipse. " +
+                "Nothing to set up, and it is the convention published coefficients are " +
+                "usually given in, but two specimens held at different angles to their own " +
+                "anatomy come out the same way up."));
+            rotationRow.Children.Add(MakeRotationOption(
+                "Drawn axis", EfdRotationReference.DrawnAxis,
+                "Turns each outline onto the specimen's own X axis, drawn with Tools, Align " +
+                "Image. Keeps the angle a specimen genuinely sits at relative to its anatomy, " +
+                "and keeps which side of that axis the shape leans to."));
+
             var settingsBar = new StackPanel();
             settingsBar.Children.Add(settingsRow);
+            settingsBar.Children.Add(rotationRow);
             settingsBar.Children.Add(warningText);
 
             // ══ Tab 1: Outline — drawn outline + EFD reconstruction, exactly
@@ -547,7 +599,8 @@ namespace DinoLino.Utilities.Modes
             System.ComponentModel.PropertyChangedEventHandler onModeChanged = (s2, pe) =>
             {
                 if (pe.PropertyName != nameof(OutlineMode.EfdHarmonics)
-                    && pe.PropertyName != nameof(OutlineMode.ContourSampleCount)) return;
+                    && pe.PropertyName != nameof(OutlineMode.ContourSampleCount)
+                    && pe.PropertyName != nameof(OutlineMode.EfdRotation)) return;
                 if (refreshing) return;
                 refreshing = true;
                 try

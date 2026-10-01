@@ -9,15 +9,69 @@ using System.Windows.Shapes;
 
 namespace DinoLino.Utilities.Modes
 {
-    /// Three-click triangle measurement: interior angles, aspect ratio, area, and the
-    /// area relative to the previous triangle.
+    /// Angle measurement, in two forms. A triangle drawn from three clicks gives its
+    /// interior angles, aspect ratio, area, and the area relative to the previous
+    /// triangle. A line drawn from two clicks gives its direction against the
+    /// specimen's own axis, which is the orientation of a feature rather than a
+    /// relationship between two things drawn.
     public class GetAngleMode : WorkMode
     {
+        #region Construction
+
+        /// The axis angle readout names the frame its numbers are taken in, so the
+        /// mode has to hear about an axis being drawn, cleared, or arriving with
+        /// another specimen. Nothing unsubscribes: one instance lives as long as the
+        /// window does.
+        public GetAngleMode()
+        {
+            ActiveAlignment.Changed += AlignmentChanged;
+        }
+
+        /// Only the readout is refreshed. An angle already measured belongs to the
+        /// operation that produced it, which carries the frame it was taken in.
+        private void AlignmentChanged() => OnPropertyChanged(nameof(AxisAngleReference));
+
+        #endregion
+
         #region Mode identity
 
         public override UserControl CreateControlPanel() => new TriangleControlPanel(this);
-        public override string TabName => "Triangle";
+        public override string TabName => "Angle";
         public override bool IsStartingNewOperation => CurrentStep == 0 || CurrentStep == 3;
+
+        /// <summary>Which of the two measurements the mode is set to take.</summary>
+        public enum AngleMethod
+        {
+            Triangle,
+            AxisAngle
+        }
+
+        private AngleMethod _currentMethod = AngleMethod.Triangle;
+
+        public AngleMethod CurrentMethod
+        {
+            get => _currentMethod;
+            set
+            {
+                if (!SetField(ref _currentMethod, value)) return;
+
+                OnPropertyChanged(nameof(IsTriangleSelected));
+                OnPropertyChanged(nameof(IsAxisAngleSelected));
+                OnTipChanged?.Invoke();
+            }
+        }
+
+        public bool IsTriangleSelected => CurrentMethod == AngleMethod.Triangle;
+        public bool IsAxisAngleSelected => CurrentMethod == AngleMethod.AxisAngle;
+
+        /// <summary>Switches tools from the control panel and starts the new one clean.</summary>
+        public void SelectAngleMethod(string tag)
+        {
+            if (!Enum.TryParse(tag, out AngleMethod method)) return;
+
+            CurrentMethod = method;
+            ResetDrawingState();
+        }
 
         #endregion
 
@@ -79,6 +133,23 @@ namespace DinoLino.Utilities.Modes
             set => SetField(ref _relativeAreaResult, value);
         }
 
+        // Clockwise angle from the specimen's axis to the line just drawn. Held as a
+        // string so an unmeasured state can read "N/A" the way the ratios do.
+        private object _axisAngleResult = "N/A";
+        public object AxisAngleResult
+        {
+            get => _axisAngleResult;
+            set => SetField(ref _axisAngleResult, value);
+        }
+
+        // The frame the next angle will be taken in, shown beneath the value so a
+        // number taken on an unaligned specimen is never mistaken for an aligned one.
+        // Read live, so drawing or clearing an axis is reflected the moment it happens
+        // rather than at the next measurement.
+        public string AxisAngleReference => ActiveAlignment.Current.IsAligned
+            ? "Measuring from the specimen axis"
+            : "No alignment set: measuring from the image";
+
         private string _triAreaScaledResult = "Unscaled";
         public string TriAreaScaledResult
         {
@@ -105,6 +176,14 @@ namespace DinoLino.Utilities.Modes
             RecomputeScaledResults();
         }
 
+        /// <summary>Puts a stored axis angle back on the panel.</summary>
+        public void RestoreAxisAngle(AxisAngleOperation operation)
+        {
+            if (operation == null) return;
+
+            AxisAngleResult = FormatAngle(operation.AxisAngleDegrees);
+        }
+
         public override void ClearMetadata()
         {
             AngleAResult = 0;
@@ -112,6 +191,7 @@ namespace DinoLino.Utilities.Modes
             AngleCResult = 0;
             TriAspectRatioResult = 0;
             RelativeAreaResult = "N/A";
+            AxisAngleResult = "N/A";
             _imageArea = 0;
             _hasImageArea = false;
             RecomputeScaledResults();
@@ -139,6 +219,75 @@ namespace DinoLino.Utilities.Modes
         }
 
         public override List<UIElement> ProcessClick(Vector2 mousePos)
+        {
+            return IsAxisAngleSelected
+                ? ProcessAxisAngleClick(mousePos)
+                : ProcessTriangleClick(mousePos);
+        }
+
+        /// Two clicks: the first starts the line, the second finishes it and measures
+        /// its direction. Each line is one measurement, so the step returns to zero
+        /// rather than carrying a point over the way the triangle does.
+        private List<UIElement> ProcessAxisAngleClick(Vector2 mousePos)
+        {
+            List<UIElement> output = new();
+
+            if (CurrentStep == 0)
+            {
+                PointA = mousePos;
+                CurrentUILine = MakeLine(PointA, PointA);
+
+                output.Add(CurrentUILine);
+                CurrentOperation.Add(CurrentUILine);
+                CurrentStep = 1;
+
+                return output;
+            }
+
+            // Too close to the first point for a direction to mean anything, so the
+            // click is spent rather than measured and the line goes on following the
+            // cursor.
+            if ((mousePos - PointA).Magnitude() < MinimumAxisLinePixels) return output;
+
+            PointB = mousePos;
+            CurrentUILine.X2 = mousePos.X;
+            CurrentUILine.Y2 = mousePos.Y;
+
+            MeasureAxisAngle();
+
+            CurrentUILine = null;
+            CurrentStep = 0;
+
+            return output;
+        }
+
+        /// The direction of the drawn line in the specimen's frame. Canvas Y grows
+        /// downward, so the angle runs clockwise on screen, and it is reported over a
+        /// full turn: a line drawn one way and the same line drawn back are different
+        /// readings, which is what tells a feature pointing forward from one pointing
+        /// back.
+        private void MeasureAxisAngle()
+        {
+            Vector2 along = PointB - PointA;
+
+            bool aligned = ActiveAlignment.Current.IsAligned;
+
+            double canvasAngle = Math.Atan2(along.Y, along.X);
+            double degrees = ActiveAlignment.Current.ToAlignedAngle(canvasAngle) * 180.0 / Math.PI;
+
+            degrees = Normalize360(degrees);
+
+            AxisAngleResult = FormatAngle(degrees);
+
+            CommitCurrentOperation(new AxisAngleOperation
+            {
+                OperationKind = "Axis Angle",
+                AxisAngleDegrees = degrees,
+                MeasuredAgainstAxis = aligned
+            }, PointA, PointB);
+        }
+
+        private List<UIElement> ProcessTriangleClick(Vector2 mousePos)
         {
             List<UIElement> output = new();
             switch (CurrentStep)
@@ -222,6 +371,24 @@ namespace DinoLino.Utilities.Modes
             return output;
         }
 
+        /// <summary>Shortest line, in canvas pixels, whose direction means anything.</summary>
+        private const double MinimumAxisLinePixels = 8.0;
+
+        private static string FormatAngle(double degrees) =>
+            degrees.ToString("0.0", System.Globalization.CultureInfo.CurrentCulture) + "\u00B0";
+
+        private static double Normalize360(double degrees)
+        {
+            double value = degrees % 360.0;
+            if (value < 0) value += 360.0;
+
+            // Rounded to the precision the reading is shown at, so the number kept
+            // and the number on screen never disagree, and so a value a hair under a
+            // full turn is not rounded up past one: a full turn is no turn.
+            value = Math.Round(value, 1);
+            return value >= 360.0 ? 0.0 : value;
+        }
+
         private void CalculateAndUpdateResults()
         {
             Vector2 AB = PointB - PointA;
@@ -278,6 +445,36 @@ namespace DinoLino.Utilities.Modes
         public string AvgTriAspectRatioResult => FormatAverage(TriangleOps.Select(o => o.TriAspectRatio));
         public string AvgTriAreaScaledResult => FormatScaledAreaAverage(TriangleOps.Select(o => o.TriAreaImagePixels));
 
+        private IEnumerable<AxisAngleOperation> AxisAngleOps => OperationsOfKind<AxisAngleOperation>();
+
+        /// The mean direction of every angle measured on this specimen. Taken round
+        /// the circle rather than as a plain average: 359 degrees and 1 degree are two
+        /// degrees apart, and averaging them as numbers would answer 180.
+        public string AvgAxisAngleResult => FormatMeanDirection(
+            AxisAngleOps.Select(o => o.AxisAngleDegrees));
+
+        private static string FormatMeanDirection(IEnumerable<double> degrees)
+        {
+            var list = degrees.ToList();
+            if (list.Count == 0) return "N/A";
+
+            double x = 0, y = 0;
+
+            foreach (double d in list)
+            {
+                double radians = d * Math.PI / 180.0;
+                x += Math.Cos(radians);
+                y += Math.Sin(radians);
+            }
+
+            // Directions cancelling out leave no mean to report, which is what an
+            // evenly spread set of angles genuinely has.
+            if (Math.Abs(x) < 1e-9 && Math.Abs(y) < 1e-9) return "N/A";
+
+            double mean = Normalize360(Math.Atan2(y, x) * 180.0 / Math.PI);
+            return mean.ToString();
+        }
+
         protected override void RecomputeAverages()
         {
             OnPropertyChanged(nameof(AvgAngleAResult));
@@ -285,6 +482,7 @@ namespace DinoLino.Utilities.Modes
             OnPropertyChanged(nameof(AvgAngleCResult));
             OnPropertyChanged(nameof(AvgTriAspectRatioResult));
             OnPropertyChanged(nameof(AvgTriAreaScaledResult));
+            OnPropertyChanged(nameof(AvgAxisAngleResult));
         }
 
         #endregion
@@ -295,7 +493,11 @@ namespace DinoLino.Utilities.Modes
             "💡 Click three points to define a triangle. Results update automatically after the third click.",
             "💡 The aspect ratio of any triangle is the length of its longest side divided by its height.");
 
-        public override string[] GetTips() => TriangleTips;
+        private static readonly string[] AxisAngleTips = BuildTips(
+            "💡 Click two points along a feature to measure the direction it points.",
+            "💡 Set the specimen's axis first with Tools > Align > Align Specimen, or the angle is measured from the image instead.");
+
+        public override string[] GetTips() => IsAxisAngleSelected ? AxisAngleTips : TriangleTips;
 
         #endregion
     }

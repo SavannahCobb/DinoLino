@@ -15,10 +15,15 @@ using System.Windows.Media;
 
 namespace DinoLino.Utilities
 {
-    // Per-session operation viewer: one tab per operation kind, grouped by specimen.
-    // Every tab takes its columns from the Batch Workshop table that measures the
-    // same kind, so the two views and their exports always carry the same variables.
-    // Specimen group columns appear in every grid, CSV, and workbook sheet.
+    // Per-session data window: one tab per mode, each showing that mode's whole wide
+    // table — every variable of the mode as a column, every attempt as a row, with the
+    // specimen group columns between Attempt and the measurements. Rows, columns and
+    // specimens are deleted here, a variable of your own is added here, and each tab
+    // exports on its own or is staged for the workbook. Specimen group columns appear
+    // in every grid, CSV and workbook sheet.
+    //
+    // The mode is the unit throughout: a row joins every measurement made on one
+    // attempt of that mode, which is the thing a narrower per-tool table cannot say.
     public class GeomOpHistoryWindow : Window
     {
         #region Fields and tab definitions
@@ -39,8 +44,52 @@ namespace DinoLino.Utilities
         // Kept so the workbook is rebuilt from live history at export time rather
         // than from the rows captured when the tabs were drawn.
         private readonly UndoRedoManager _undoRedo;
-        private readonly string _currentName;
-        private readonly ScaleCalibration _scale;
+        private readonly ScaleSource _scale;
+
+        // Which specimen is loaded, read when it is needed rather than kept. This window
+        // is not modal, so the user can navigate, rename, clear or open another project
+        // while it is open; a name captured at construction would label one specimen's
+        // rows with another's name, and the loaded block's Delete specimen would then be
+        // offering to delete something other than what the banner says.
+        private readonly Func<string> _nameSource;
+
+        private string CurrentName => _nameSource != null ? _nameSource() : "";
+
+        /// Called after every change made here, with the operations a deletion removed —
+        /// empty when the change removed nothing, such as adding or hiding a column. The
+        /// window is not modal, so the host is told as it happens rather than at close.
+        private readonly Action<IReadOnlyList<WorkOperation>> _onChanged;
+
+        /// The host's own clear for the loaded specimen, which asks the one question the
+        /// sidebar button and Ctrl+Shift+C ask, honours the same "do not ask again", and
+        /// does the same work — including the half-finished capture and the outline
+        /// preview, which this window has no way to reach. Returns whether it cleared
+        /// anything. Null falls back to the warning below.
+        private readonly Func<bool> _clearLoadedSpecimen;
+
+        // Set while a handler is making several changes at once, so the window redraws
+        // once at the end instead of after each one.
+        private bool _suspendRebuild;
+
+        private static readonly WorkOperation[] NothingRemoved = new WorkOperation[0];
+
+        // Where each tab was scrolled to. Every edit redraws the whole tab, and without
+        // this a row deleted near the bottom of a long table sends the view back to the
+        // top, so deleting several in a row means scrolling back each time.
+        private readonly Dictionary<string, Point> _scrollOffsets =
+            new Dictionary<string, Point>(StringComparer.Ordinal);
+
+        // How to build each tab's contents, held rather than run. A tab is built when it
+        // is first looked at and not before: the window follows the session now, so it
+        // redraws on every measurement, and building all six tables each time — the EFA
+        // one can be a hundred columns wide — would make measuring stutter.
+        private readonly Dictionary<TabItem, Func<UIElement>> _tabContent =
+            new Dictionary<TabItem, Func<UIElement>>();
+
+        // Grid appearance for the editable tables.
+        private static readonly Brush GridLine = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
+        private static readonly Brush HeaderFill = new SolidColorBrush(Color.FromRgb(0xEE, 0xEE, 0xEE));
+        private static readonly Brush SpecimenFill = new SolidColorBrush(Color.FromRgb(0xF6, 0xF6, 0xF6));
 
         // One flattened table staged for export: sheet name, column headers, and
         // rows already formatted as display strings.
@@ -71,81 +120,86 @@ namespace DinoLino.Utilities
             public string[] Cells { get; set; }
         }
 
-        // One tab: the Batch Workshop table its columns come from, and which of that
-        // table's column groups belong to it.
+        // One tab: the Batch Workshop category whose whole wide table it shows.
         private sealed class TabSpec
         {
             public string Name;
             public string FileName;
             public WorkshopCategory Category;
-            public Func<WorkshopColumnGroup, bool> Pick;
         }
 
-        // Tab order also fixes sheet order in the exported workbooks.
+        // Tab order also fixes sheet order in the exported workbooks. One entry per
+        // mode, so a tab, its CSV and its workbook sheet are the same table under the
+        // same name, and the key its hidden and formula columns are filed under.
         private static readonly TabSpec[] Tabs =
         {
             new TabSpec
             {
-                Name = "Circular Arc",
-                FileName = "circular_arc_history.csv",
-                Category = WorkshopCategory.Curvature,
-                Pick = g => g.OperationType == typeof(CircularArcOperation)
+                Name = "Curvature",
+                FileName = "curvature_data.csv",
+                Category = WorkshopCategory.Curvature
             },
             new TabSpec
             {
-                Name = "Parabolic Arc",
-                FileName = "parabolic_arc_history.csv",
-                Category = WorkshopCategory.Curvature,
-                Pick = g => g.OperationType == typeof(ParabolaOperation)
+                Name = "Angle",
+                FileName = "angle_data.csv",
+                Category = WorkshopCategory.Angle
             },
             new TabSpec
             {
-                Name = "n-Point Spline",
-                FileName = "spline_history.csv",
-                Category = WorkshopCategory.Curvature,
-                Pick = g => g.OperationType == typeof(SplineOperation)
-            },
-            new TabSpec
-            {
-                Name = "Triangle",
-                FileName = "triangle_history.csv",
-                Category = WorkshopCategory.Angle,
-                Pick = g => g.OperationType == typeof(GetAngleOperation)
-            },
-            new TabSpec
-            {
-                // The Shape Data table holds one group per shape kind; all four
-                // belong to this tab.
-                Name = "Shapes",
-                FileName = "shape_history.csv",
-                Category = WorkshopCategory.Shape,
-                Pick = g => g.OperationType == typeof(ShapeOperation)
-            },
-            new TabSpec
-            {
-                Name = "Lines",
-                FileName = "line_history.csv",
-                Category = WorkshopCategory.Shape,
-                Pick = g => g.OperationType == typeof(LineOperation)
+                // Draw, not Shape: the mode's name, like every other tab, and the mode
+                // measures lines as well as shapes. The table key stays Shape, since a
+                // saved project files its hidden and formula columns under that.
+                Name = "Draw",
+                FileName = "draw_data.csv",
+                Category = WorkshopCategory.Shape
             },
             new TabSpec
             {
                 Name = "Outline",
-                FileName = "outline_history.csv",
-                Category = WorkshopCategory.OutlineMetadata,
-                Pick = g => g.OperationType == typeof(OutlineOperation)
+                FileName = "outline_metadata.csv",
+                Category = WorkshopCategory.OutlineMetadata
+            },
+            new TabSpec
+            {
+                Name = "EFA",
+                FileName = "efa_data.csv",
+                Category = WorkshopCategory.Efa
             }
         };
 
-        public GeomOpHistoryWindow(UndoRedoManager undoRedo, string specimenName, ScaleCalibration scale)
+        // What the per-tool tabs of earlier versions were called, so a project saved
+        // then still finds its staged sheets. Several tools collapsed into one mode,
+        // which is why this maps many names onto one.
+        private static readonly Dictionary<string, string> LegacySheetNames =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Circular Arc", "Curvature" },
+                { "Parabolic Arc", "Curvature" },
+                { "n-Point Spline", "Curvature" },
+                { "Shapes", "Draw" },
+                { "Lines", "Draw" },
+                { "Shape", "Draw" }
+            };
+
+        public GeomOpHistoryWindow(
+            UndoRedoManager undoRedo, Func<string> nameSource, ScaleSource scale,
+            Func<bool> clearLoadedSpecimen = null,
+            Action<IReadOnlyList<WorkOperation>> onChanged = null)
         {
             _undoRedo = undoRedo;
-            _currentName = specimenName;
+            _nameSource = nameSource;
             _scale = scale;
+            _clearLoadedSpecimen = clearLoadedSpecimen;
+            _onChanged = onChanged;
 
-            Title = "History of operations";
-            Width = 720;
-            Height = 540;
+            Title = "Operation history";
+
+            // Wide enough for a mode's whole table rather than one tool's few columns.
+            Width = 1000;
+            Height = 620;
+            MinWidth = 560;
+            MinHeight = 320;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
             var footer = BuildWorkbookFooter();
@@ -158,20 +212,93 @@ namespace DinoLino.Utilities
             root.Children.Add(footer);
             root.Children.Add(_tabs);
             Content = root;
+
+            // The wide tables scroll sideways under a two-finger gesture, a tilt
+            // wheel, or Shift+wheel.
+            MainWindow.AttachHorizontalWheel(this);
+
+            // Measuring, undoing, clearing a specimen, moving to the next one and opening
+            // a project all raise this, so the tables follow the session instead of
+            // showing what it looked like when the window opened. Without it the window
+            // would keep offering to delete rows that no longer exist.
+            if (_undoRedo != null) _undoRedo.PropertyChanged += Session_Changed;
         }
 
-        // Draws the tab strip, keeping the user on the tab they were reading.
+        private void Session_Changed(object sender, PropertyChangedEventArgs e)
+        {
+            // Every mutator raises CanUndo and CanRedo together, so following one of them
+            // redraws once per change rather than twice.
+            if (e.PropertyName == nameof(UndoRedoManager.CanUndo)) Rebuild();
+        }
+
+        /// Redraws from live state at the host's request, for the changes that do not pass
+        /// through the undo history at all: a scale measured, a group assigned, a specimen
+        /// renamed, an outline's metrics generated, a project opened or reset.
+        internal void RefreshTables() => Rebuild();
+
+        protected override void OnClosed(EventArgs e)
+        {
+            if (_undoRedo != null) _undoRedo.PropertyChanged -= Session_Changed;
+            base.OnClosed(e);
+        }
+
+        /// Redraws the tables and the workbook footer from live state. Everything that
+        /// changes anything comes through here, so there is one place that decides what
+        /// the window is showing.
+        private void Rebuild()
+        {
+            if (_suspendRebuild) return;
+
+            BuildTabs();
+            UpdateWorkbookStatus();
+        }
+
+        // Draws the tab strip, keeping the user on the tab they were reading. Only that
+        // tab's table is built; the rest are built if and when they are opened.
         private void BuildTabs()
         {
             int selected = _tabs.SelectedIndex;
 
+            _tabs.SelectionChanged -= Tabs_SelectionChanged;
             _tabs.Items.Clear();
-            foreach (var spec in Tabs)
-                _tabs.Items.Add(BuildTab(spec));
+            _tabContent.Clear();
+            _customData = null;
 
-            _tabs.Items.Add(BuildCustomTab());
+            foreach (var spec in Tabs)
+            {
+                var captured = spec;
+                var item = new TabItem { Header = spec.Name };
+                _tabContent[item] = () => BuildTab(captured);
+                _tabs.Items.Add(item);
+            }
+
+            var custom = new TabItem { Header = CustomTable.Key };
+            _tabContent[custom] = BuildCustomTab;
+            _tabs.Items.Add(custom);
 
             if (selected >= 0 && selected < _tabs.Items.Count) _tabs.SelectedIndex = selected;
+
+            _tabs.SelectionChanged += Tabs_SelectionChanged;
+            FillSelectedTab();
+        }
+
+        private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Only the strip's own change, not one bubbling up from a control on a tab.
+            if (!ReferenceEquals(e.OriginalSource, _tabs)) return;
+
+            FillSelectedTab();
+        }
+
+        // Builds the selected tab's contents if they have not been built since the last
+        // redraw. Content is never set to null, so a non-null Content means built.
+        private void FillSelectedTab()
+        {
+            var item = _tabs.SelectedItem as TabItem;
+            if (item == null || item.Content != null) return;
+
+            Func<UIElement> build;
+            if (_tabContent.TryGetValue(item, out build)) item.Content = build();
         }
 
         // Every specimen, oldest first: archived records then the live one.
@@ -187,31 +314,115 @@ namespace DinoLino.Utilities
 
         #region Tab building
 
-        // One tab's table. The null filter key means the History view shows every
-        // column, whatever has been hidden in a Batch Workshop edit window. The
-        // category is named separately so the tab also carries that table's formula
-        // columns, as far as the operation kinds on the tab can supply them.
+        // A tab's table is its mode's whole table, built under that mode's own filter
+        // key. So a column hidden on this tab is hidden in its CSV and its workbook
+        // sheet as well, and the three can no longer disagree about what was exported.
         private static WorkshopTable BuildTable(
-            TabSpec spec, UndoRedoManager ur, string currentName, ScaleCalibration scale)
-        {
-            var groups = WorkshopTables.ColumnGroups(spec.Category, ur, scale)
-                .Where(spec.Pick)
-                .ToList();
+            TabSpec spec, UndoRedoManager ur, string currentName, ScaleSource scale) =>
+            WorkshopTables.Build(spec.Category, ur, currentName, scale);
 
-            return WorkshopTables.BuildFromGroups(
-                null, groups, ur, currentName, WorkshopTables.KeyFor(spec.Category));
+        // The same table with nothing hidden, for the one export that promises the whole
+        // record. Hiding a column is a choice about a table being arranged for a purpose;
+        // File then Export Operation History is not that, so it writes everything and
+        // cannot quietly hand over a file short of a column.
+        private static WorkshopTable BuildUnfilteredTable(
+            TabSpec spec, UndoRedoManager ur, string currentName, ScaleSource scale) =>
+            WorkshopTables.BuildFromGroups(
+                null,
+                WorkshopTables.ColumnGroups(spec.Category, ur, scale),
+                ur, currentName, scale,
+                WorkshopTables.KeyFor(spec.Category));
+
+        // One tab: the mode's table with its row, column and specimen controls, and
+        // under it any formula column the table cannot currently calculate. The tab's
+        // CSV comes from the same table, so the file matches what is on screen.
+        private UIElement BuildTab(TabSpec spec)
+        {
+            var table = BuildTable(spec, _undoRedo, CurrentName, _scale);
+
+            var body = new StackPanel();
+
+            // On the tab rather than above the strip: none of it is true of the Custom
+            // tab, which joins several modes and so has no row of its own to delete.
+            body.Children.Add(new TextBlock
+            {
+                Text = "Deleting a row or specimen is permanent and cannot be undone with " +
+                       "Ctrl+Z. Hiding a column removes it from this table and from its " +
+                       "exports. Group columns are set from the Sample tab and cannot be " +
+                       "hidden here. Add column makes a variable of your own from a formula; " +
+                       "it is recalculated every time the table is built, and the \u270E on " +
+                       "its header edits it.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(10, 8, 10, 6)
+            });
+
+            if (table.IsEmpty)
+            {
+                body.Children.Add(new TextBlock
+                {
+                    Text = "No measurements of this kind have been recorded yet.",
+                    Opacity = 0.6,
+                    Margin = new Thickness(12)
+                });
+            }
+            else
+            {
+                body.Children.Add(BuildEditableGrid(spec, table));
+            }
+
+            var hidden = WorkshopColumnFilter.HiddenColumns(table.Key).ToList();
+            if (hidden.Count > 0) body.Children.Add(HiddenPanel(table.Key, hidden));
+
+            var missing = MissingFormulaColumns(spec, table);
+            if (missing.Count > 0) body.Children.Add(MissingPanel(spec, missing));
+
+            return WrapTab(spec, table, body);
         }
 
-        // For each specimen, a header and a grid of that kind's operations. The grid
-        // shows the specimen's group columns before the measurement columns, and the
-        // tab's CSV comes from the same table, so the file matches what is on screen.
-        private TabItem BuildTab(TabSpec spec)
+        // What has been hidden, named under the table it was hidden from. Without this a
+        // hidden column is invisible in both senses: gone from the table and from its
+        // export, with nothing on screen saying the export is short of a column. A hidden
+        // formula column would also take its edit button out of reach.
+        private UIElement HiddenPanel(string key, List<string> hidden)
         {
-            var table = BuildTable(spec, _undoRedo, _currentName, _scale);
-            var panel = BuildTableGrids(table);
+            var panel = new StackPanel { Margin = new Thickness(10, 4, 10, 0) };
 
-            var (csvHeaders, csvRows) = table.ToCsv();
-            return WrapTab(spec, table, panel, csvHeaders, csvRows);
+            panel.Children.Add(new TextBlock
+            {
+                Text = hidden.Count == 1
+                    ? "1 column is hidden, so it is missing from this table's exports. Click to bring it back:"
+                    : hidden.Count + " columns are hidden, so they are missing from this table's exports. Click to bring one back:",
+                Foreground = Brushes.Gray,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+
+            foreach (var column in hidden)
+            {
+                var captured = column;
+                var button = new Button
+                {
+                    Content = column,
+                    Padding = new Thickness(8, 1, 8, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = "Show " + column + " again"
+                };
+                button.Click += (s, e) =>
+                {
+                    WorkshopColumnFilter.Show(key, captured);
+                    Changed(NothingRemoved);
+                };
+                row.Children.Add(button);
+            }
+
+            panel.Children.Add(row);
+            return panel;
         }
 
         // One grid per specimen, with the group columns before the measurements.
@@ -257,12 +468,468 @@ namespace DinoLino.Utilities
 
         #endregion
 
+        #region Editable table
+
+        // ---- Formula columns ----
+
+        // A mode's formula columns, ready to look up by header.
+        private static Dictionary<string, WorkshopFormulaColumn> FormulaColumns(TabSpec spec)
+        {
+            var columns = new Dictionary<string, WorkshopFormulaColumn>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var column in WorkshopFormulas.ColumnsFor(WorkshopTables.KeyFor(spec.Category)))
+                columns[column.Name] = column;
+
+            return columns;
+        }
+
+        // Formula columns this table cannot calculate, because a column their formula
+        // names is not one of its own. They are listed under the table so they can
+        // still be corrected or removed.
+        private static List<WorkshopFormulaColumn> MissingFormulaColumns(
+            TabSpec spec, WorkshopTable table)
+        {
+            var shown = new HashSet<string>(table.MeasurementHeaders, StringComparer.OrdinalIgnoreCase);
+
+            return WorkshopFormulas
+                .ColumnsFor(WorkshopTables.KeyFor(spec.Category))
+                .Where(c => !shown.Contains(c.Name))
+                .ToList();
+        }
+
+        private UIElement MissingPanel(TabSpec spec, List<WorkshopFormulaColumn> columns)
+        {
+            var panel = new StackPanel { Margin = new Thickness(10, 12, 10, 0) };
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Not calculated in this table, because a column the formula names is missing:",
+                Foreground = Brushes.Gray,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            foreach (var column in columns)
+            {
+                var line = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(0, 4, 0, 0)
+                };
+
+                line.Children.Add(new TextBlock
+                {
+                    Text = column.Name + "  =  " + column.Text,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                var fix = GlyphButton("\u270E", "Edit or delete this formula column");
+                var captured = column;
+                fix.Click += (s, e) => EditFormulaColumn(spec, captured);
+                line.Children.Add(fix);
+
+                panel.Children.Add(line);
+            }
+
+            return panel;
+        }
+
+        /// Opens the formula dialog for a new column, or for one the table already has.
+        private void EditFormulaColumn(TabSpec spec, WorkshopFormulaColumn existing)
+        {
+            string key = WorkshopTables.KeyFor(spec.Category);
+
+            // The dialog offers this table's columns and previews the rows the formula
+            // would produce, so it is given the table as it currently stands.
+            var table = BuildTable(spec, _undoRedo, CurrentName, _scale);
+
+            var window = new WorkshopFormulaWindow(table, existing)
+            {
+                Owner = this,
+                FontSize = FontSize,
+                FontFamily = FontFamily
+            };
+
+            if (window.ShowDialog() != true) return;
+
+            if (window.DeleteRequested)
+            {
+                WorkshopFormulas.Remove(existing);
+                Changed(NothingRemoved);
+                return;
+            }
+
+            WorkshopFormulas.Save(
+                existing,
+                key,
+                WorkshopFormulaWindow.KeptName(this, existing, window.ColumnName),
+                window.Result);
+
+            Changed(NothingRemoved);
+        }
+
+        // Whether an operation still belongs to an archived specimen.
+        private bool InArchive(WorkOperation op)
+        {
+            foreach (var record in _undoRedo.Archive)
+            {
+                if (record.Operations.Contains(op)) return true;
+            }
+
+            return false;
+        }
+
+        // ---- Grid rendering ----
+
+        // The mode's whole table: Specimen, Attempt, the group columns, then one column
+        // per visible measurement, with a hide button on each measurement header, a
+        // delete button on each row, and a banner per specimen carrying its own.
+        private UIElement BuildEditableGrid(TabSpec spec, WorkshopTable table)
+        {
+            var visible = table.VisibleColumnIndexes();
+            var formulaColumns = FormulaColumns(spec);
+            var groupColumns = SpecimenGroups.Columns;
+            int groupCount = groupColumns.Count;
+
+            // Where the measurement columns begin, once Specimen, Attempt and the
+            // group columns have taken their places.
+            int firstMeasurement = 2 + groupCount;
+
+            var grid = new Grid();
+
+            // Specimen, Attempt, the group columns, one per visible measurement, then
+            // the row-delete button.
+            int columnCount = firstMeasurement + visible.Count + 1;
+            for (int i = 0; i < columnCount; i++)
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            int row = 0;
+
+            // ---- Header row ----
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            Place(grid, GridHeaderCell("Specimen"), row, 0);
+            Place(grid, GridHeaderCell("Attempt"), row, 1);
+
+            // A group column belongs to the specimen rather than to this table, so it
+            // carries no hide button.
+            for (int g = 0; g < groupCount; g++)
+                Place(grid, GridHeaderCell(groupColumns[g]), row, 2 + g);
+
+            for (int i = 0; i < visible.Count; i++)
+            {
+                int sourceIndex = visible[i];
+                string header = table.MeasurementHeaders[sourceIndex];
+
+                Button hide = null;
+                if (table.AllowColumnHiding)
+                {
+                    hide = GlyphButton("\u2715", "Hide this column (removes it from the export too)");
+                    hide.Click += (s, e) =>
+                    {
+                        WorkshopColumnFilter.Hide(table.Key, header);
+                        Changed(NothingRemoved);
+                    };
+                }
+
+                // A column the user made carries the formula behind it, which this
+                // button opens for editing or deletion.
+                Button edit = null;
+                WorkshopFormulaColumn formula;
+
+                if (formulaColumns.TryGetValue(header, out formula))
+                {
+                    var captured = formula;
+                    edit = GlyphButton("\u270E", "Edit this formula column:  = " + formula.Text);
+                    edit.Click += (s, e) => EditFormulaColumn(spec, captured);
+                }
+
+                Place(grid, GridHeaderCell(header, hide, edit), row, firstMeasurement + i);
+            }
+
+            Place(grid, GridHeaderCell(""), row, columnCount - 1);
+            row++;
+
+            // ---- Specimen blocks ----
+            foreach (var block in table.Blocks)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var banner = new StackPanel { Orientation = Orientation.Horizontal };
+                banner.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(block.Name) ? "(unnamed specimen)" : block.Name,
+                    FontWeight = FontWeights.Bold,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                if (block.IsActive)
+                {
+                    banner.Children.Add(new TextBlock
+                    {
+                        Text = "  (loaded)",
+                        Opacity = 0.6,
+                        VerticalAlignment = VerticalAlignment.Center
+                    });
+                }
+
+                var wipe = new Button
+                {
+                    Content = "Delete specimen",
+                    Margin = new Thickness(12, 0, 0, 0),
+                    Padding = new Thickness(8, 1, 8, 1),
+                    ToolTip = "Remove every measurement recorded for this specimen. "
+                            + "This cannot be undone."
+                };
+
+                var capturedBlock = block;
+                wipe.Click += (s, e) => DeleteSpecimen(capturedBlock);
+                banner.Children.Add(wipe);
+
+                Place(grid, GridCell(banner, SpecimenFill), row, 0, columnCount);
+                row++;
+
+                // The specimen's groups are the same on all of its rows, the way its
+                // name is.
+                var groupValues = SpecimenGroups.ValuesFor(block.Name);
+
+                foreach (var tableRow in block.Rows)
+                {
+                    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                    Place(grid, GridCell(GridText(block.Name), null), row, 0);
+                    Place(grid, GridCell(GridText(tableRow.Attempt > 0 ? tableRow.Attempt.ToString() : ""), null), row, 1);
+
+                    for (int g = 0; g < groupCount; g++)
+                        Place(grid, GridCell(GridText(groupValues[g]), null), row, 2 + g);
+
+                    for (int i = 0; i < visible.Count; i++)
+                        Place(grid, GridCell(GridText(tableRow.Cells[visible[i]]), null), row, firstMeasurement + i);
+
+                    // A placeholder row for a specimen with no measurements has nothing
+                    // to delete.
+                    UIElement action;
+                    if (tableRow.Operations.Count == 0)
+                    {
+                        action = GridText("");
+                    }
+                    else
+                    {
+                        var kill = GlyphButton("\u2715", DeleteRowTip(tableRow));
+                        var capturedRow = tableRow;
+                        kill.Click += (s, e) => DeleteRow(capturedRow);
+                        action = kill;
+                    }
+
+                    Place(grid, GridCell(action, null), row, columnCount - 1);
+                    row++;
+                }
+            }
+
+            // Cells draw their right and bottom edges, so the outer border supplies the
+            // remaining top and left lines to close the grid.
+            return new Border
+            {
+                Child = grid,
+                BorderBrush = GridLine,
+                BorderThickness = new Thickness(1, 1, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(10, 4, 10, 8)
+            };
+        }
+
+        private static string DeleteRowTip(WorkshopRow row) =>
+            row.Operations.Count == 1
+                ? "Delete this measurement"
+                : $"Delete this row ({row.Operations.Count} measurements share it)";
+
+        // ---- Deletion ----
+
+        private void DeleteRow(WorkshopRow row)
+        {
+            if (row.Operations.Count == 0) return;
+
+            // The row was drawn from history as it stood; an undo or a clear since then
+            // may have taken these operations out of it. Asking a permanent-deletion
+            // question and then deleting nothing is worse than redrawing quietly.
+            if (!row.Operations.Any(op => _undoRedo.History.Contains(op)
+                                          || _undoRedo.RedoStack.Contains(op)
+                                          || InArchive(op)))
+            {
+                Rebuild();
+                return;
+            }
+
+            // One row can hold several operations, since attempt n of each kind shares
+            // a row; say so plainly rather than deleting more than the user expects.
+            string message = row.Operations.Count == 1
+                ? "Delete this measurement?\n\nIt is removed from the session permanently and cannot be restored with Undo."
+                : $"Delete all {row.Operations.Count} measurements on this row?\n\n" +
+                  "This row holds one attempt from each operation kind shown. They are removed " +
+                  "permanently and cannot be restored with Undo.";
+
+            var confirm = MessageBox.Show(this, message, "Delete row",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var justRemoved = new List<WorkOperation>();
+
+            // One redraw for the lot: each removal announces itself, and following every
+            // one of them would rebuild the table once per measurement deleted.
+            _suspendRebuild = true;
+            try
+            {
+                foreach (var op in row.Operations)
+                {
+                    if (_undoRedo.RemoveOperation(op)) justRemoved.Add(op);
+                }
+            }
+            finally
+            {
+                _suspendRebuild = false;
+            }
+
+            Changed(justRemoved);
+        }
+
+        private void DeleteSpecimen(WorkshopBlock block)
+        {
+            // The loaded specimen belongs to the host: it asks the one question asked
+            // everywhere else, and it clears what this window cannot reach — a
+            // half-finished capture, the outline preview, the mode on screen. It also
+            // reads which specimen is loaded now, so a window left open while the user
+            // moved on cannot clear one specimen while naming another.
+            //
+            // No count is tested first. The block lists the live history, and a specimen
+            // whose measurements have all been undone has an empty one while still holding
+            // everything the clear would discard; the host counts the redo stack too.
+            if (block.IsActive && _clearLoadedSpecimen != null)
+            {
+                // The host redraws itself and this window follows the history, so there is
+                // nothing to report back.
+                _clearLoadedSpecimen();
+                return;
+            }
+
+            int count = block.AllOperations.Count;
+            if (count == 0) return;
+
+            // The block was drawn from the archive as it stood. A project opened since
+            // then replaced that archive, and removing a record it no longer holds would
+            // do nothing while still blanking the mode panels, as though it had. Checked
+            // before the question, so nobody is asked about a specimen already gone.
+            if (!block.IsActive && !_undoRedo.Archive.Contains(block.Record))
+            {
+                Rebuild();
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                this,
+                $"Delete all {count} measurement(s) recorded for \"{block.Name}\"?\n\n" +
+                "This removes every kind of measurement for that specimen, not just the ones shown here, " +
+                "and cannot be restored with Undo. The specimen's image, name and groups are kept.",
+                "Delete specimen",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            // Snapshot first: the lists are emptied by the calls below.
+            var deleted = block.AllOperations.ToList();
+
+            _suspendRebuild = true;
+            try
+            {
+                if (block.IsActive)
+                    _undoRedo.RemoveActiveSpecimenOperations();
+                else
+                    _undoRedo.RemoveArchivedSpecimen(block.Record);
+            }
+            finally
+            {
+                _suspendRebuild = false;
+            }
+
+            Changed(deleted);
+        }
+
+        /// Redraws this window and tells the host what changed. Adding, hiding or showing
+        /// a column removes nothing, and still has to reach the host: the plot and the
+        /// variable pickers read these tables.
+        private void Changed(IReadOnlyList<WorkOperation> removed)
+        {
+            Rebuild();
+            _onChanged?.Invoke(removed ?? NothingRemoved);
+        }
+
+        // ---- Cell helpers ----
+
+        // Every cell carries its own right and bottom border; the outer grid supplies
+        // the top and left edges, so the lines meet without doubling up.
+        private static Border GridCell(UIElement content, Brush background) => new Border
+        {
+            Child = content,
+            Background = background,
+            BorderBrush = GridLine,
+            BorderThickness = new Thickness(0, 0, 1, 1),
+            Padding = new Thickness(6, 3, 6, 3)
+        };
+
+        private static Border GridHeaderCell(string text, params Button[] buttons)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            panel.Children.Add(new TextBlock
+            {
+                Text = text,
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            if (buttons != null)
+            {
+                foreach (var button in buttons)
+                {
+                    if (button != null) panel.Children.Add(button);
+                }
+            }
+
+            return GridCell(panel, HeaderFill);
+        }
+
+        private static TextBlock GridText(string text) => new TextBlock
+        {
+            Text = text ?? "",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        private static Button GlyphButton(string glyph, string tip) => new Button
+        {
+            Content = glyph,
+            Width = 18,
+            Height = 18,
+            Padding = new Thickness(0),
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 9,
+            ToolTip = tip,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        private static void Place(Grid grid, UIElement element, int row, int column, int span = 1)
+        {
+            Grid.SetRow(element, row);
+            Grid.SetColumn(element, column);
+            if (span > 1) Grid.SetColumnSpan(element, span);
+            grid.Children.Add(element);
+        }
+
+        #endregion
+
         #region Tab chrome and grid helpers
 
         // Wraps a tab's specimen panel in a scroll viewer + button row (Add column /
         // Add to workbook / Export to CSV).
-        private TabItem WrapTab(TabSpec spec, WorkshopTable table, StackPanel panel,
-            string[] csvHeaders, List<string[]> csvRows)
+        private UIElement WrapTab(TabSpec spec, WorkshopTable table, StackPanel panel)
         {
             var scroll = new ScrollViewer
             {
@@ -271,26 +938,77 @@ namespace DinoLino.Utilities
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
             };
 
+            RememberScroll(scroll, spec.Name);
+
             var formulaButton = new Button
             {
                 Content = "Add column",
                 Margin = new Thickness(0, 0, 8, 0),
                 Padding = new Thickness(12, 4, 12, 4),
-                ToolTip = "Make a new variable from a formula over this tab's columns. "
-                         + "It joins the Batch Workshop table this tab belongs to, where it can be edited."
+                ToolTip = "Make a new variable from a formula over this table's columns"
             };
-            formulaButton.Click += (s, e) => AddFormulaColumn(spec, table);
+            formulaButton.Click += (s, e) => EditFormulaColumn(spec, null);
 
+            var restoreButton = new Button
+            {
+                Content = "Restore hidden columns",
+                Margin = new Thickness(0, 0, 8, 0),
+                Padding = new Thickness(12, 4, 12, 4),
+                ToolTip = "Bring back every column hidden from this table",
+                IsEnabled = WorkshopColumnFilter.HiddenCount(table.Key) > 0
+            };
+            restoreButton.Click += (s, e) =>
+            {
+                WorkshopColumnFilter.Restore(table.Key);
+                Changed(NothingRemoved);
+            };
+
+            // Built at the moment of the click, not when the tab was drawn: this window
+            // stays open while measuring, so a file written from the drawn rows would be
+            // short of everything measured since.
             return WrapContent(
-                spec.Name, spec.FileName, scroll, () => (csvHeaders, csvRows), formulaButton);
+                spec.Name, spec.FileName, scroll,
+                () => BuildTable(spec, _undoRedo, CurrentName, _scale).ToCsv(),
+                formulaButton, restoreButton);
+        }
+
+        // Keeps one tab's scroll position across the redraws its own edits cause. The
+        // offset is restored once the new content has been measured, since scrolling to a
+        // position an empty viewer does not have yet would be ignored.
+        private void RememberScroll(ScrollViewer scroll, string key)
+        {
+            scroll.ScrollChanged += (s, e) =>
+            {
+                if (e.ExtentHeightChange == 0 && e.ExtentWidthChange == 0)
+                    _scrollOffsets[key] = new Point(scroll.HorizontalOffset, scroll.VerticalOffset);
+            };
+
+            // A tab control detaches and reattaches its content as tabs are switched, so
+            // this fires again every time the tab is returned to. The offset is read now
+            // rather than captured, or returning to a tab would undo the scrolling done
+            // since it was built.
+            bool restored = false;
+
+            scroll.Loaded += (s, e) =>
+            {
+                if (restored) return;
+                restored = true;
+
+                Point saved;
+                if (!_scrollOffsets.TryGetValue(key, out saved)) return;
+                if (saved.X == 0 && saved.Y == 0) return;
+
+                scroll.ScrollToHorizontalOffset(saved.X);
+                scroll.ScrollToVerticalOffset(saved.Y);
+            };
         }
 
         // The chrome every tab shares: its content over a row of buttons. The rows to
         // export are asked for at the moment of the click, so a tab that rebuilds its
         // own content still writes what is on screen.
-        private TabItem WrapContent(
+        private UIElement WrapContent(
             string header, string suggestedFileName, UIElement content,
-            Func<(string[] Headers, List<string[]> Rows)> csv, Button extraButton)
+            Func<(string[] Headers, List<string[]> Rows)> csv, params Button[] extraButtons)
         {
             var addButton = new Button
             {
@@ -328,7 +1046,14 @@ namespace DinoLino.Utilities
                 Margin = new Thickness(8)
             };
 
-            if (extraButton != null) buttonRow.Children.Add(extraButton);
+            if (extraButtons != null)
+            {
+                foreach (var button in extraButtons)
+                {
+                    if (button != null) buttonRow.Children.Add(button);
+                }
+            }
+
             buttonRow.Children.Add(addButton);
             buttonRow.Children.Add(csvButton);
 
@@ -336,37 +1061,13 @@ namespace DinoLino.Utilities
             DockPanel.SetDock(buttonRow, Dock.Bottom);
             dock.Children.Add(buttonRow);
             dock.Children.Add(content);
-            return new TabItem { Header = header, Content = dock };
-        }
-
-        // A column added from a tab belongs to the Batch Workshop table the tab is
-        // part of, so it appears here, in that table, and in everything built from
-        // either of them.
-        private void AddFormulaColumn(TabSpec spec, WorkshopTable table)
-        {
-            // The formula reads the columns on this tab, but the column it makes joins
-            // the whole table behind it, so a name used anywhere there is not free.
-            var whole = WorkshopTables.Build(spec.Category, _undoRedo, _currentName, _scale);
-
-            var window = new WorkshopFormulaWindow(table, null, whole.MeasurementHeaders)
-            {
-                Owner = this,
-                FontSize = FontSize,
-                FontFamily = FontFamily
-            };
-
-            if (window.ShowDialog() != true) return;
-
-            WorkshopFormulas.Save(
-                null, WorkshopTables.KeyFor(spec.Category), window.ColumnName, window.Result);
-
-            BuildTabs();
+            return dock;
         }
 
         // ---- Custom tab ----
 
         /// The Custom tab: variables ticked from any mode, side by side in one table.
-        private TabItem BuildCustomTab()
+        private UIElement BuildCustomTab()
         {
             _customData = new ContentControl { Content = BuildCustomGrids() };
 
@@ -376,12 +1077,15 @@ namespace DinoLino.Utilities
             DockPanel.SetDock(picker, Dock.Left);
             body.Children.Add(picker);
 
-            body.Children.Add(new ScrollViewer
+            var scroll = new ScrollViewer
             {
                 Content = _customData,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
-            });
+            };
+
+            RememberScroll(scroll, CustomTable.Key);
+            body.Children.Add(scroll);
 
             var addColumn = new Button
             {
@@ -396,11 +1100,11 @@ namespace DinoLino.Utilities
         }
 
         private (string[] Headers, List<string[]> Rows) CustomCsv() =>
-            CustomTable.Build(_undoRedo, _currentName, _scale).ToCsv();
+            CustomTable.Build(_undoRedo, CurrentName, _scale).ToCsv();
 
         private UIElement BuildCustomGrids()
         {
-            var table = CustomTable.Build(_undoRedo, _currentName, _scale);
+            var table = CustomTable.Build(_undoRedo, CurrentName, _scale);
 
             if (table.MeasurementHeaders.Length == 0 || table.Blocks.Count == 0)
             {
@@ -458,7 +1162,7 @@ namespace DinoLino.Utilities
             };
             panel.Children.Add(clear);
 
-            var catalog = CustomTable.Catalog(_undoRedo, _currentName, _scale);
+            var catalog = CustomTable.Catalog(_undoRedo, CurrentName, _scale);
 
             if (catalog.Count == 0)
             {
@@ -488,7 +1192,7 @@ namespace DinoLino.Utilities
                     var tick = new CheckBox
                     {
                         Content = name,
-                        IsChecked = CustomTableSelection.IsSelected(category, name),
+                        IsChecked = CustomTableSelection.IsSelected(name),
                         Margin = new Thickness(8, 1, 4, 1)
                     };
                     tick.Click += (s, e) =>
@@ -563,12 +1267,12 @@ namespace DinoLino.Utilities
         // and edited here rather than in a Batch Workshop edit window.
         private void EditCustomFormulaColumn(WorkshopFormulaColumn existing)
         {
-            var table = CustomTable.Build(_undoRedo, _currentName, _scale);
+            var table = CustomTable.Build(_undoRedo, CurrentName, _scale);
 
             // A variable that is unticked today can be ticked tomorrow, so no column
             // may take the name of one.
             var reserved = CustomTable
-                .Catalog(_undoRedo, _currentName, _scale)
+                .Catalog(_undoRedo, CurrentName, _scale)
                 .SelectMany(g => g.Headers);
 
             var window = new WorkshopFormulaWindow(table, existing, reserved)
@@ -593,7 +1297,7 @@ namespace DinoLino.Utilities
                 WorkshopFormulaWindow.KeptName(this, existing, window.ColumnName),
                 window.Result);
 
-            BuildTabs();
+            Changed(NothingRemoved);
         }
 
         /// <summary>Sheet names staged for the workbook, for a project file to record.</summary>
@@ -607,7 +1311,14 @@ namespace DinoLino.Utilities
 
             foreach (var name in names)
             {
-                if (!string.IsNullOrEmpty(name)) _selectedSheets.Add(name);
+                if (string.IsNullOrEmpty(name)) continue;
+
+                // A project saved when the tabs were per tool names sheets that no tab
+                // answers to now. Translating them keeps that project's staging rather
+                // than silently exporting nothing.
+                string current;
+                _selectedSheets.Add(
+                    LegacySheetNames.TryGetValue(name, out current) ? current : name);
             }
         }
 
@@ -782,7 +1493,7 @@ namespace DinoLino.Utilities
 
         private void ExportWorkbook()
         {
-            var sheets = StagedSheets(_undoRedo, _currentName, _scale);
+            var sheets = StagedSheets(_undoRedo, CurrentName, _scale);
             if (sheets.Count == 0) return;
 
             var dlg = new SaveFileDialog
@@ -815,7 +1526,7 @@ namespace DinoLino.Utilities
         public static void ClearStagedSheets() => _selectedSheets.Clear();
 
         public static void ExportAllOperationHistory(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var dlg = new SaveFileDialog
             {
@@ -829,7 +1540,7 @@ namespace DinoLino.Utilities
 
             try
             {
-                WriteXlsx(dlg.FileName, BuildAllSheets(ur, currentName, scale));
+                WriteXlsx(dlg.FileName, BuildAllSheets(ur, currentName, scale, unfiltered: true));
             }
             catch (Exception ex)
             {
@@ -838,23 +1549,29 @@ namespace DinoLino.Utilities
             }
         }
 
-        /// Writes the Batch Workshop's All Geometric Data workbook: the sheets staged
-        /// in the History window, or every sheet when none have been staged.
+        /// Writes the Batch Workshop's Geometric Data workbook: the sheets staged in the
+        /// operation history, or every sheet when none have been staged. Every mode is
+        /// represented, EFA included.
         public static void ExportAllGeometricData(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            UndoRedoManager ur, string currentName, ScaleSource scale)
         {
             var sheets = _selectedSheets.Count > 0
                 ? StagedSheets(ur, currentName, scale)
                 : BuildAllSheets(ur, currentName, scale);
 
+            // A staged set naming no table that exists — a hand-edited project file, or
+            // one from a version whose tabs were named differently again — would otherwise
+            // write nothing and say nothing. Everything is the safer reading of it.
+            if (sheets.Count == 0) sheets = BuildAllSheets(ur, currentName, scale);
+
             if (sheets.Count == 0) return;
 
             var dlg = new SaveFileDialog
             {
-                Title = "Export All Geometric Data",
+                Title = "Export Geometric Data",
                 Filter = "Excel workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
                 DefaultExt = ".xlsx",
-                FileName = "all_geometric_data.xlsx",
+                FileName = "geometric_data.xlsx",
                 AddExtension = true
             };
             if (dlg.ShowDialog() != true) return;
@@ -873,20 +1590,25 @@ namespace DinoLino.Utilities
         // Staged sheets, rebuilt from live history rather than from the rows captured
         // when the tabs were drawn, so a workbook exported after an edit is current.
         private static List<WorkbookSheet> StagedSheets(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale) =>
+            UndoRedoManager ur, string currentName, ScaleSource scale) =>
             BuildAllSheets(ur, currentName, scale)
                 .Where(s => _selectedSheets.Contains(s.Name))
                 .ToList();
 
-        // One sheet per tab, in tab order.
+        // One sheet per tab, in tab order. Unfiltered writes every column whatever has
+        // been hidden, which only the complete-record export asks for.
         private static List<WorkbookSheet> BuildAllSheets(
-            UndoRedoManager ur, string currentName, ScaleCalibration scale)
+            UndoRedoManager ur, string currentName, ScaleSource scale, bool unfiltered = false)
         {
             var sheets = new List<WorkbookSheet>();
 
             foreach (var spec in Tabs)
             {
-                var (headers, rows) = BuildTable(spec, ur, currentName, scale).ToCsv();
+                var table = unfiltered
+                    ? BuildUnfilteredTable(spec, ur, currentName, scale)
+                    : BuildTable(spec, ur, currentName, scale);
+
+                var (headers, rows) = table.ToCsv();
                 sheets.Add(new WorkbookSheet { Name = spec.Name, Headers = headers, Rows = rows });
             }
 
@@ -907,19 +1629,6 @@ namespace DinoLino.Utilities
         /// live history. Exposed so other exporters walk history the same way.
         public static IEnumerable<(string Name, IReadOnlyList<WorkOperation> Ops)> SpecimenBlocks(
             UndoRedoManager ur, string currentName) => Blocks(ur, currentName);
-
-        /// <summary>Writes one Batch Workshop category's wide table to a CSV.</summary>
-        public static void ExportWorkshopCsv(
-            WorkshopCategory category, UndoRedoManager ur, string currentName, ScaleCalibration scale)
-        {
-            var table = WorkshopTables.Build(category, ur, currentName, scale);
-
-            if (table.IsEmpty) return;
-
-            // Hidden columns are already dropped by ToCsv; group columns are included.
-            var (headers, rows) = table.ToCsv();
-            ExportCsv(headers, rows, WorkshopTables.FileNameFor(category));
-        }
 
         #endregion
 
@@ -1081,14 +1790,16 @@ namespace DinoLino.Utilities
         // Real-world units when calibrated, else raw image pixels so the cell is
         // never blank. The input is in image pixels, the unit every stored
         // measurement uses, so the number does not depend on the window size at the
-        // moment of export.
-        internal static string FmtLength(double imagePixels, ScaleCalibration scale) =>
-            scale != null && scale.IsCalibrated
+        // moment of export. The calibration is passed by value, and it is the one
+        // belonging to the specimen whose row this is: a table spanning specimens
+        // scaled differently gives each of them its own ratio and its own unit.
+        internal static string FmtLength(double imagePixels, ScaleState scale) =>
+            scale.IsSet
                 ? $"{scale.ToUnitsFromImage(imagePixels):F2} {scale.Unit}"
                 : $"{Math.Round(imagePixels, 1).ToString(CultureInfo.InvariantCulture)} px";
 
-        internal static string FmtArea(double imagePixelArea, ScaleCalibration scale) =>
-            scale != null && scale.IsCalibrated
+        internal static string FmtArea(double imagePixelArea, ScaleState scale) =>
+            scale.IsSet
                 ? $"{scale.ToUnitsAreaFromImage(imagePixelArea):F2} {scale.Unit}\u00B2"
                 : $"{Math.Round(imagePixelArea, 1).ToString(CultureInfo.InvariantCulture)} px\u00B2";
 

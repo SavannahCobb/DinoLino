@@ -66,6 +66,7 @@ namespace DinoLino.Utilities
             else if (operation is GetAngleOperation) DrawTriangle(points, style, elements);
             else if (operation is ShapeOperation) DrawShape((ShapeOperation)operation, points, style, elements);
             else if (operation is LineOperation) DrawLine(points, style, elements);
+            else if (operation is AxisAngleOperation) DrawLine(points, style, elements);
             else if (operation is OutlineOperation) DrawOutline(points, style, elements);
 
             return elements;

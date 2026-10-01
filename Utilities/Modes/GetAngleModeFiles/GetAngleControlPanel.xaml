@@ -1,8 +1,9 @@
-<UserControl x:Class="DinoLino.Utilities.Modes.TriangleControlPanel"
+﻿<UserControl x:Class="DinoLino.Utilities.Modes.TriangleControlPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="200">
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style TargetType="Label">
             <Setter Property="Padding" Value="0,1,0,1"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -10,52 +11,88 @@
     </UserControl.Resources>
 
     <StackPanel Margin="10,10,10,0">
-        <TextBlock Text="Triangle Metrics:" FontWeight="Bold" Margin="0,0,0,6"/>
 
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto" MinWidth="42"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*" MinWidth="42"/>
-            </Grid.ColumnDefinitions>
+        <RadioButton x:Name="UI_TriangleOption" Content="Triangle" Tag="Triangle"
+                     GroupName="AngleGroup" Checked="AngleMethod_Checked"
+                     FontWeight="Bold" Margin="0,4,10,8"
+                     ToolTip="Three clicks: the interior angles, aspect ratio and area of a triangle."/>
 
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <StackPanel Visibility="{Binding IsTriangleSelected, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto" MinWidth="42"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*" MinWidth="42"/>
+                </Grid.ColumnDefinitions>
 
-            <Label Grid.Row="0" Grid.Column="0" Content="Angle A:" FontWeight="Bold" Margin="5,0,8,4"/>
-            <Label Grid.Row="0" Grid.Column="1" Content="{Binding AngleAResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
-            <Label Grid.Row="0" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
-            <Label Grid.Row="0" Grid.Column="3" Content="{Binding AvgAngleAResult}" Margin="0,0,0,4"/>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-            <Label Grid.Row="1" Grid.Column="0" Content="Angle B:" FontWeight="Bold" Margin="5,0,8,4"/>
-            <Label Grid.Row="1" Grid.Column="1" Content="{Binding AngleBResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
-            <Label Grid.Row="1" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
-            <Label Grid.Row="1" Grid.Column="3" Content="{Binding AvgAngleBResult}" Margin="0,0,0,4"/>
+                <Label Grid.Row="0" Grid.Column="0" Content="Angle A:" FontWeight="Bold" Margin="5,0,8,4"/>
+                <Label Grid.Row="0" Grid.Column="1" Content="{Binding AngleAResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
+                <Label Grid.Row="0" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
+                <Label Grid.Row="0" Grid.Column="3" Content="{Binding AvgAngleAResult}" Margin="0,0,0,4"/>
 
-            <Label Grid.Row="2" Grid.Column="0" Content="Angle C:" FontWeight="Bold" Margin="5,0,8,4"/>
-            <Label Grid.Row="2" Grid.Column="1" Content="{Binding AngleCResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
-            <Label Grid.Row="2" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
-            <Label Grid.Row="2" Grid.Column="3" Content="{Binding AvgAngleCResult}" Margin="0,0,0,4"/>
+                <Label Grid.Row="1" Grid.Column="0" Content="Angle B:" FontWeight="Bold" Margin="5,0,8,4"/>
+                <Label Grid.Row="1" Grid.Column="1" Content="{Binding AngleBResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
+                <Label Grid.Row="1" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
+                <Label Grid.Row="1" Grid.Column="3" Content="{Binding AvgAngleBResult}" Margin="0,0,0,4"/>
 
-            <Label Grid.Row="3" Grid.Column="0" Content="Aspect Ratio:" FontWeight="Bold" Margin="5,0,8,4"/>
-            <Label Grid.Row="3" Grid.Column="1" Content="{Binding TriAspectRatioResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
-            <Label Grid.Row="3" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
-            <Label Grid.Row="3" Grid.Column="3" Content="{Binding AvgTriAspectRatioResult}" Margin="0,0,0,4"/>
+                <Label Grid.Row="2" Grid.Column="0" Content="Angle C:" FontWeight="Bold" Margin="5,0,8,4"/>
+                <Label Grid.Row="2" Grid.Column="1" Content="{Binding AngleCResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
+                <Label Grid.Row="2" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
+                <Label Grid.Row="2" Grid.Column="3" Content="{Binding AvgAngleCResult}" Margin="0,0,0,4"/>
 
-            <Label Grid.Row="4" Grid.Column="0" Content="Area:" FontWeight="Bold" Margin="5,0,8,4"/>
-            <Label Grid.Row="4" Grid.Column="1" Content="{Binding TriAreaScaledResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
-            <Label Grid.Row="4" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
-            <Label Grid.Row="4" Grid.Column="3" Content="{Binding AvgTriAreaScaledResult}" Margin="0,0,0,4"/>
+                <Label Grid.Row="3" Grid.Column="0" Content="Aspect Ratio:" FontWeight="Bold" Margin="5,0,8,4"/>
+                <Label Grid.Row="3" Grid.Column="1" Content="{Binding TriAspectRatioResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
+                <Label Grid.Row="3" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
+                <Label Grid.Row="3" Grid.Column="3" Content="{Binding AvgTriAspectRatioResult}" Margin="0,0,0,4"/>
 
-            <Label Grid.Row="5" Grid.Column="0" Content="Relative Size:" FontWeight="Bold" Margin="5,0,8,0"/>
-            <Label Grid.Row="5" Grid.Column="1" Content="{Binding RelativeAreaResult}" HorizontalContentAlignment="Left"/>
-        </Grid>
+                <Label Grid.Row="4" Grid.Column="0" Content="Area:" FontWeight="Bold" Margin="5,0,8,4"/>
+                <Label Grid.Row="4" Grid.Column="1" Content="{Binding TriAreaScaledResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
+                <Label Grid.Row="4" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
+                <Label Grid.Row="4" Grid.Column="3" Content="{Binding AvgTriAreaScaledResult}" Margin="0,0,0,4"/>
+
+                <Label Grid.Row="5" Grid.Column="0" Content="Relative Size:" FontWeight="Bold" Margin="5,0,8,0"/>
+                <Label Grid.Row="5" Grid.Column="1" Content="{Binding RelativeAreaResult}" HorizontalContentAlignment="Left"/>
+            </Grid>
+        </StackPanel>
+
+        <RadioButton x:Name="UI_AxisAngleOption" Content="Axis Angle" Tag="AxisAngle"
+                     GroupName="AngleGroup" Checked="AngleMethod_Checked"
+                     FontWeight="Bold" Margin="0,14,10,8"
+                     ToolTip="Two clicks along a feature: the direction it points, measured from the specimen's own axis."/>
+
+        <StackPanel Visibility="{Binding IsAxisAngleSelected, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto" MinWidth="42"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*" MinWidth="42"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Label Grid.Row="0" Grid.Column="0" Content="Angle:" FontWeight="Bold" Margin="5,0,8,4"
+                       ToolTip="Clockwise angle from the specimen's axis to the line drawn, over a full turn."/>
+                <Label Grid.Row="0" Grid.Column="1" Content="{Binding AxisAngleResult}" HorizontalContentAlignment="Left" Margin="0,0,0,4"/>
+                <Label Grid.Row="0" Grid.Column="2" Content="Avg" Foreground="Gray" Margin="6,0,4,4"/>
+                <Label Grid.Row="0" Grid.Column="3" Content="{Binding AvgAxisAngleResult}" Margin="0,0,0,4"/>
+
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="4" Text="{Binding AxisAngleReference}"
+                           Foreground="Gray" TextWrapping="Wrap" Margin="5,2,0,0"/>
+            </Grid>
+        </StackPanel>
     </StackPanel>
 </UserControl>

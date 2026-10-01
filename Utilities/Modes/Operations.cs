@@ -30,6 +30,11 @@ namespace DinoLino.Utilities.Operations
         /// Restores the mode-specific metadata saved with this operation.
         /// </summary>
         public abstract void ApplyMetadataToMode();
+
+        /// False for an entry that measures nothing, such as a text note. Undo restores
+        /// a panel from the newest entry that has a reading to give it, so an entry that
+        /// has none must say so rather than leave the panel showing an undone result.
+        public virtual bool CarriesMetadata => true;
     }
 
     /// <summary>
@@ -135,6 +140,24 @@ namespace DinoLino.Utilities.Operations
         }
     }
 
+    /// History entry for a line measured against the specimen's own axis, rather
+    /// than against another line or against the image.
+    public class AxisAngleOperation : WorkOperation
+    {
+        /// Clockwise angle from the specimen's X axis to the drawn line, in degrees
+        /// within [0, 360). Measured against the image's own axis when the specimen
+        /// has no alignment, which is what MeasuredAgainstAxis records.
+        public double AxisAngleDegrees { get; set; }
+
+        /// <summary>True when the specimen was aligned at the time of measuring.</summary>
+        public bool MeasuredAgainstAxis { get; set; }
+
+        public override void ApplyMetadataToMode()
+        {
+            if (SourceMode is GetAngleMode mode) mode.RestoreAxisAngle(this);
+        }
+    }
+
     /// <summary>
     /// History entry for a drawn shape measurement.
     /// </summary>
@@ -175,7 +198,7 @@ namespace DinoLino.Utilities.Operations
         public double LineLengthImagePixels { get; set; }
 
         /// Extent of the line along the specimen's X axis, in image pixels, taken from
-        /// the orientation set by Tools ▸ Align Image. An unaligned specimen falls back
+        /// the orientation set by Tools ▸ Align ▸ Align Specimen. An unaligned specimen falls back
         /// to the image's own axes, which is what ImageAlignment hands back when no
         /// orientation has been drawn.
         public double LineDeltaXImagePixels { get; set; }
@@ -187,6 +210,10 @@ namespace DinoLino.Utilities.Operations
         public object LineAngle { get; set; }
         public double HeadingDegrees { get; set; }
 
+        /// True when the specimen carried an orientation as the line was measured, and
+        /// so whether the two extents above are on its axes or on the image's.
+        public bool MeasuredAgainstAxis { get; set; }
+
         public override void ApplyMetadataToMode()
         {
             if (SourceMode is DrawMode mode)
@@ -197,6 +224,61 @@ namespace DinoLino.Utilities.Operations
                     LineLengthImagePixels, LineDeltaXImagePixels, LineDeltaYImagePixels);
             }
         }
+    }
+
+    /// <summary>What a label puts on the picture.</summary>
+    public enum AnnotationKind
+    {
+        /// <summary>Words the user types.</summary>
+        Text,
+
+        /// <summary>A filled circle.</summary>
+        Point,
+
+        /// <summary>A filled five-pointed star.</summary>
+        Star
+    }
+
+    /// A label the user has put over the image: words, a dot or a star. It shares the
+    /// history with the measurements, so Undo reaches it, Redo brings it back and it
+    /// travels with its specimen, but it measures nothing: no table has a column for it,
+    /// no counter tallies it, and it is drawn on a layer of its own so it is not swept
+    /// away with the drawn operations when See Previous Operations is off.
+    public class AnnotationOperation : WorkOperation
+    {
+        /// <summary>Which of the three this label is.</summary>
+        public AnnotationKind Kind { get; set; } = AnnotationKind.Text;
+
+        /// <summary>What the user typed. Empty for a dot or a star.</summary>
+        public string Text { get; set; } = "";
+
+        /// Where on the picture the label is pinned, in image pixels: the first letter
+        /// for words, the middle for a dot or a star. Image pixels rather than canvas
+        /// ones so a label keeps its place on the feature it names however the window is
+        /// resized or the view zoomed.
+        public double ImageX { get; set; }
+
+        /// <summary>The other half of the label's position, in image pixels.</summary>
+        public double ImageY { get; set; }
+
+        /// How large the label is drawn, set by dragging its corner: the height of a
+        /// letter for words, the width for a dot or a star. Kept with the label rather
+        /// than taken from a setting, so two labels on the same picture can be sized
+        /// against what each of them points at.
+        public double Size { get; set; } = 13.0;
+
+        /// The typeface the words are drawn in, by name, as the setting under Settings,
+        /// Font read when the label was made. Empty falls back to that setting, which is
+        /// what a label from a build that did not record it is read back as. Unused by a
+        /// dot or a star, which have no words to draw.
+        public string FontName { get; set; } = "";
+
+        /// Nothing to put on a panel: a label is not a measurement, and the mode that
+        /// placed it shows no reading for it.
+        public override void ApplyMetadataToMode() { }
+
+        /// <inheritdoc />
+        public override bool CarriesMetadata => false;
     }
 
     /// <summary>

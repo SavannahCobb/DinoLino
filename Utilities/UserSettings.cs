@@ -15,7 +15,8 @@ namespace DinoLino.Utilities
     /// only while the user has asked for one: no file means every default stands,
     /// including the switch itself.
     ///
-    /// Only choices about how the program looks belong here. Anything that describes a
+    /// Only choices about how the program works belong here: how it looks, and standing
+    /// answers to questions it would otherwise keep asking. Anything that describes a
     /// specimen — its scale, its alignment, its measurements — is session data and is
     /// deliberately left out: opening the program must never offer a calibration that
     /// was measured against an image nobody has loaded.
@@ -61,6 +62,18 @@ namespace DinoLino.Utilities
 
         public string FontFamily { get; set; } = "Arial";
         public double FontSize { get; set; } = 14;
+
+        /// Whether Clear Specimen Measurements still stops to ask. Turned off by the
+        /// prompt's own "do not ask again", because measuring a large sample means
+        /// clearing specimens often and a dialog in that path costs more than it saves.
+        /// File ▸ Restore Default Settings brings the question back.
+        public bool AskBeforeClearSpecimen { get; set; } = true;
+
+        /// A standing answer to the question Tools ▸ Scale ▸ Apply Scale puts when a
+        /// specimen it would write over already has a scale measured on its own image.
+        /// Ask is the state in which the question is still put, and the one a program
+        /// that has never been told otherwise starts in.
+        public ScaleOverwriteAnswer ScaleOverwrite { get; set; } = ScaleOverwriteAnswer.Ask;
 
         // The range the font dialog accepts. A file naming a size outside it has been
         // hand-edited or damaged, so the default is used in its place.
@@ -117,6 +130,9 @@ namespace DinoLino.Utilities
             settings.LineThickness = ReadLineThickness(values, settings.LineThickness);
             settings.FontFamily = ReadString(values, "FontFamily", settings.FontFamily);
             settings.FontSize = ReadFontSize(values, settings.FontSize);
+            settings.ScaleOverwrite = ReadScaleOverwrite(values, settings.ScaleOverwrite);
+            settings.AskBeforeClearSpecimen =
+                ReadBool(values, "AskBeforeClearSpecimen", settings.AskBeforeClearSpecimen);
 
             return settings;
         }
@@ -151,6 +167,15 @@ namespace DinoLino.Utilities
         private static string ReadString(Dictionary<string, string> values, string key, string fallback) =>
             values.TryGetValue(key, out string text) && text.Length > 0
                 ? text
+                : fallback;
+
+        // A name the enum does not know has been hand-edited or damaged, and the safe
+        // reading of it is that the question has not been answered yet.
+        private static ScaleOverwriteAnswer ReadScaleOverwrite(
+            Dictionary<string, string> values, ScaleOverwriteAnswer fallback) =>
+            values.TryGetValue("ScaleOverwrite", out string text)
+            && Enum.TryParse(text, true, out ScaleOverwriteAnswer parsed)
+                ? parsed
                 : fallback;
 
         // Invariant culture both ways, so a file written on one machine reads the
@@ -236,6 +261,8 @@ namespace DinoLino.Utilities
             Write(text, "LineThickness", LineThickness);
             Write(text, "FontFamily", FontFamily);
             Write(text, "FontSize", FontSize);
+            Write(text, "ScaleOverwrite", ScaleOverwrite.ToString());
+            Write(text, "AskBeforeClearSpecimen", AskBeforeClearSpecimen);
 
             return text.ToString();
         }

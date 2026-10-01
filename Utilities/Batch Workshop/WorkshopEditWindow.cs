@@ -19,7 +19,7 @@ namespace DinoLino.Utilities
         private readonly WorkshopCategory _category;
         private readonly UndoRedoManager _undoRedo;
         private readonly string _currentName;
-        private readonly ScaleCalibration _scale;
+        private readonly ScaleSource _scale;
 
         private readonly StackPanel _body = new StackPanel();
         private readonly List<WorkOperation> _removed = new List<WorkOperation>();
@@ -33,13 +33,20 @@ namespace DinoLino.Utilities
         /// visuals from the workspace.
         public IReadOnlyList<WorkOperation> RemovedOperations => _removed;
 
+        /// The host's question for discarding the loaded specimen's measurements, so this
+        /// window asks exactly what the sidebar button and Ctrl+Shift+C ask, and honours
+        /// the same "do not ask again". Null falls back to this window's own warning.
+        private readonly Func<int, bool> _confirmClearActive;
+
         public WorkshopEditWindow(
-            WorkshopCategory category, UndoRedoManager undoRedo, string currentName, ScaleCalibration scale)
+            WorkshopCategory category, UndoRedoManager undoRedo, string currentName,
+            ScaleSource scale, Func<int, bool> confirmClearActive = null)
         {
             _category = category;
             _undoRedo = undoRedo;
             _currentName = currentName;
             _scale = scale;
+            _confirmClearActive = confirmClearActive;
 
             Title = "Edit " + WorkshopTables.TitleFor(category);
             Width = 1000;
@@ -341,7 +348,8 @@ namespace DinoLino.Utilities
                     Content = "Delete specimen",
                     Margin = new Thickness(12, 0, 0, 0),
                     Padding = new Thickness(8, 1, 8, 1),
-                    ToolTip = "Remove every measurement recorded for this specimen"
+                    ToolTip = "Remove every measurement recorded for this specimen. "
+                            + "This cannot be undone."
                 };
 
                 var capturedBlock = block;
@@ -437,6 +445,20 @@ namespace DinoLino.Utilities
         {
             int count = block.AllOperations.Count;
             if (count == 0) return;
+
+            // The loaded specimen is the host's to ask about, so this window puts the
+            // same question the sidebar button does rather than a second one of its own.
+            if (block.IsActive && _confirmClearActive != null)
+            {
+                // The block lists the live history; the clear also discards what has been
+                // undone, so the question has to count that too or it understates itself.
+                if (!_confirmClearActive(count + _undoRedo.RedoStack.Count)) return;
+
+                _removed.AddRange(block.AllOperations);
+                _undoRedo.RemoveActiveSpecimenOperations();
+                Rebuild();
+                return;
+            }
 
             var confirm = MessageBox.Show(
                 this,

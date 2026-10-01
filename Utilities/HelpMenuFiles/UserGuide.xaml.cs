@@ -30,6 +30,16 @@ namespace DinoLino
         private static readonly Regex RepeatedWhitespace =
             new Regex(@"[ \t]{2,}", RegexOptions.Compiled);
 
+        /// <summary>A line like "Undo:   Ctrl + Z": a short label, then a value.</summary>
+        private static readonly Regex LabelledLine =
+            new Regex(@"^(?<label>[^\s:][^:]{0,29}:)[ \t]+(?<value>\S.*)$", RegexOptions.Compiled);
+
+        /// <summary>Fewest labelled lines a section needs before it reads as a table.</summary>
+        private const int MinimumTableRows = 3;
+
+        /// <summary>Spaces between the widest label and the column of values.</summary>
+        private const int TableColumnGap = 2;
+
         /// <summary>
         /// Rewrites terms that read badly out loud. Applied in order, so longer
         /// patterns come before the single characters they contain. Add a line here
@@ -387,10 +397,63 @@ namespace DinoLino
                 var body = string.Join(Environment.NewLine, lines.GetRange(1, lines.Count - 1)).Trim();
                 if (title.Length == 0 || body.Length == 0) continue;
 
-                sections.Add(new GuideSection(title, body, ToSpeech(title, body)));
+                bool isTable = AlignColumns(ref body);
+
+                sections.Add(new GuideSection(title, body, ToSpeech(title, body), isTable));
             }
 
             return sections;
+        }
+
+        /// A section made up only of "label: value" lines is a table, and its values
+        /// are set out in one column: each label is padded to the width of the widest,
+        /// so whatever spacing the file happens to use, the values line up. Returns
+        /// true when the section was one, which is what puts it in a fixed-width font
+        /// on screen — spaces only line up in a font whose characters all measure the
+        /// same.
+        ///
+        /// A section carrying any prose is left exactly as it was written: its
+        /// definitions run to whole sentences, and forcing those into a column would
+        /// make them harder to read rather than easier.
+        private static bool AlignColumns(ref string body)
+        {
+            var lines = body.Replace("\r\n", "\n").Split('\n');
+
+            var matches = new List<Match>();
+
+            foreach (var line in lines)
+            {
+                if (line.Trim().Length == 0) continue;
+
+                var match = LabelledLine.Match(line);
+                if (!match.Success) return false;
+
+                matches.Add(match);
+            }
+
+            if (matches.Count < MinimumTableRows) return false;
+
+            int width = matches.Max(m => m.Groups["label"].Value.Length) + TableColumnGap;
+
+            var rebuilt = new List<string>(lines.Length);
+            int at = 0;
+
+            foreach (var line in lines)
+            {
+                if (line.Trim().Length == 0)
+                {
+                    rebuilt.Add(string.Empty);
+                    continue;
+                }
+
+                var match = matches[at++];
+
+                rebuilt.Add(match.Groups["label"].Value.PadRight(width)
+                            + match.Groups["value"].Value.Trim());
+            }
+
+            body = string.Join(Environment.NewLine, rebuilt);
+            return true;
         }
 
         private static string ToSpeech(string title, string body)
@@ -469,11 +532,12 @@ namespace DinoLino
             private bool _isSpeaking;
             private bool _isExpanded;
 
-            public GuideSection(string title, string body, string speechText)
+            public GuideSection(string title, string body, string speechText, bool isTable)
             {
                 Title = title;
                 Body = body;
                 SpeechText = speechText;
+                IsTable = isTable;
             }
 
             public string Title { get; }
@@ -483,6 +547,10 @@ namespace DinoLino
 
             /// <summary>Text handed to the synthesizer, with symbols spelled out.</summary>
             public string SpeechText { get; }
+
+            /// True for a section of "label: value" lines, which is shown in a
+            /// fixed-width font so its two columns line up.
+            public bool IsTable { get; }
 
             public bool IsSpeaking
             {
