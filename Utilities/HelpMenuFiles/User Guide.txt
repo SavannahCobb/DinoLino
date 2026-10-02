@@ -45,7 +45,7 @@ Redoes the last action that was undone by the user. This returns the metadata of
 
 Clear Specimen Measurements:
 Takes every measurement and every label off the specimen on screen and blanks every mode's results, not only those of the mode you are in. Anything you have undone but not yet redone goes with them. The specimen itself, its image and its scale are kept, and other specimens are untouched. This cannot be undone.
-The same command is on the Clear Specimen Measurements button in the sidebar, on Ctrl + Shift + C, and on the Delete specimen button beside the loaded specimen in a Batch Workshop edit window. All four ask the same question, and it names the specimen and how many recorded operations are about to go.
+The same command is on the Clear Specimen Measurements button in the sidebar, on Ctrl + Shift + C, and on the Delete specimen button beside the loaded specimen in a Data Workshop edit window. All four ask the same question, and it names the specimen and how many recorded operations are about to go.
 The question carries a "Do not show this message again" box. Ticking it and clearing stops the question being asked for the rest of the session, and for good if File, Save Settings is on; ticking it and cancelling changes nothing. File, Restore Default Settings brings the question back.
 To clear every specimen at once, use File, New Project, which offers to save first.
 
@@ -102,7 +102,7 @@ Click again after arc completion to begin another operation.
 
 Central Angle: A measure of curvature. The angle, in degrees, subtended at the center of the circle passing through all three points.
 Chord-Arc Ratio: A measure of curvature. The length of the first line drawn (chord) divided by arc length. Arc length = radius * central angle (in radians).
-Rise-Span ratio: Length of the first line drawn (chord) divided by the length of its bisector (sagitta).
+Rise-Span ratio: Length of the chord bisector (sagitta) divided by length of the first line drawn (chord).
 Radius: Radius of the circle passing through all three points.
 
 ----- Parabolic Arc -----
@@ -421,7 +421,7 @@ Toggle on or off to display a navigation window in the top left corner of the sc
 The navigation window shows a zoomed-out view of the image, with a rectangle indicating the current viewable area. 
 While zoomed in, click anywhere in the navigation window to move the viewable area to that location.
 
------ See Batch Workshop -----
+----- See Data Workshop -----
 Two rows. Geometric Data opens the operation history for editing, and exports every staged table as one .xlsx workbook. 2D Outlines opens the gallery of stored outline shapes, and exports them as silhouette images. Toggle on or off to display on the right sidebar.
 One mode's table on its own is read, edited and exported from its own tab in the operation history, which is the one place any of that happens.
 
@@ -433,7 +433,7 @@ Each mode tab of the Operation History window marks every measurement column wit
 Because the tab and its exports are the same table, a column hidden on screen is a column missing from the file. Nothing in the file records that, so the hidden ones are named under the table while any are hidden, and clicking one brings back just that column. File, Export Operation History is the exception: it writes every column regardless.
 
 The Workbook:
-Each tab of the Operation History window has an Add to workbook button. Staged tables are counted in the footer of that window and are the ones written when the workbook is exported, either from the Export workbook button in that footer or from the Geometric Data row of the Batch Workshop. With nothing staged, every table is written instead, one sheet per mode.
+Each tab of the Operation History window has an Add to workbook button. Staged tables are counted in the footer of that window and are the ones written when the workbook is exported, either from the Export workbook button in that footer or from the Geometric Data row of the Data Workshop. With nothing staged, every table is written instead, one sheet per mode.
 A project saved by an earlier version recorded its staged sheets under the old per-tool names. Those are matched to the mode that now holds them when the project is opened, so the staging survives.
 
 Formula Columns:

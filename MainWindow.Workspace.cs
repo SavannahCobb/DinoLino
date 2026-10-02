@@ -3,7 +3,6 @@ using DinoLino.Utilities;
 using DinoLino.Utilities.Modes;
 using Microsoft.Win32;
 using System;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -23,6 +22,7 @@ namespace DinoLino
         // Image adjustment
         // =====================
 
+        private BitmapSource _originalImageSource;
         private ImageAdjuster _imageAdjuster = new ImageAdjuster();
 
         // The loaded specimen's correction values, which the dialog reopens with. They
@@ -528,15 +528,30 @@ namespace DinoLino
                 return path;
             }
         }
-
         /// <summary>
         /// Loads an image into the workspace and refreshes all state derived from it.
+        /// When a new specimen is opened, preserves an unmodified image copy so
+        /// Reset Transform can restore its original orientation.
         /// </summary>
         private void SetWorkspaceImage(
-            BitmapSource bmp, string specimenName, bool registerAsNewSpecimen, string sourcePath = null)
+            BitmapSource bmp,
+            string specimenName,
+            bool registerAsNewSpecimen,
+            string sourcePath = null)
         {
             // Before the specimen changes underneath it.
             CloseAdjustmentWindow();
+
+            // Only replace the stored original when a genuinely new image/specimen
+            // enters the workspace. Calls made for rotate, flip, or reset must not
+            // overwrite this preserved source.
+            if (registerAsNewSpecimen && bmp != null)
+            {
+                _originalImageSource = bmp.CloneCurrentValue();
+
+                if (_originalImageSource.CanFreeze)
+                    _originalImageSource.Freeze();
+            }
 
             WorkingImage = bmp;
             UI_WorkImage.Source = WorkingImage;
@@ -658,6 +673,26 @@ namespace DinoLino
 
         private void Menu_RotateLeft(object sender, RoutedEventArgs e)
             => ApplyImageTransform(new RotateTransform(270));   // 270° clockwise equals 90° counter-clockwise.
+
+        private void Menu_ResetTransform(object sender, RoutedEventArgs e)
+        {
+            if (_originalImageSource == null)
+            {
+                MessageBox.Show(
+                    "There is no original image available to restore.",
+                    "Reset Transform",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            SetWorkspaceImage(_originalImageSource, SpecimenManager.CurrentSpecimen.Name,false);
+
+            InitialiseWorkSpaceZoomForLoadedImage();
+
+            SyncOutlineImageTransform();
+        }
 
         /// <summary>
         /// Applies a geometric transform to the active image and reloads the workspace state.

@@ -10,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Diagnostics;
 
 namespace DinoLino
 {
@@ -42,6 +43,55 @@ namespace DinoLino
                 FontSize = _currentFontSize
             };
             userguide.ShowDialog();
+        }
+
+        private async void Menu_CheckForUpdates(
+    object sender,
+    RoutedEventArgs e)
+        {
+            UpdateCheckResult result = await UpdateChecker.CheckAsync();
+
+            if (!result.WasSuccessful)
+            {
+                MessageBox.Show(
+                    result.ErrorMessage ?? "The update check could not be completed.",
+                    "Check for Updates",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                return;
+            }
+
+            if (!result.UpdateAvailable)
+            {
+                MessageBox.Show(
+                    $"You are using the latest version of DinoLino.\n\n" +
+                    $"Current version: {result.CurrentVersion}",
+                    "Check for Updates",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            MessageBoxResult choice = MessageBox.Show(
+                $"A new version of DinoLino is available.\n\n" +
+                $"Installed version: {result.CurrentVersion}\n" +
+                $"Latest version: {result.LatestVersion}\n\n" +
+                $"Would you like to open the download page?",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (choice == MessageBoxResult.Yes &&
+                !string.IsNullOrWhiteSpace(result.ReleasePageUrl))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = result.ReleasePageUrl,
+                    UseShellExecute = true
+                });
+            }
         }
 
         // ---- Undo / Redo ----
@@ -362,8 +412,7 @@ namespace DinoLino
             UI_MenuScreenshot.IsEnabled = enabled;
             UI_MenuPictureCorrections.IsEnabled = enabled;
             UI_MenuDecimate.IsEnabled = enabled;
-            UI_MenuFlip.IsEnabled = enabled;
-            UI_MenuRotate.IsEnabled = enabled;
+            UI_MenuTransform.IsEnabled = enabled;
         }
 
         /// Enables Clear Specimen Measurements only while the loaded specimen has something
