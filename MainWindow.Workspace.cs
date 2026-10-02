@@ -102,21 +102,357 @@ namespace DinoLino
         // Zoom
         // =====================
 
-        private void UpdateWorkSpaceZoom(double delta, Point relativeTo)
+        // The smallest and largest zoom values the user can reach.
+        // 0.05 = 5%; 16.0 = 1600%.
+        private const double MinimumWorkSpaceZoom = 0.05;
+        private const double MaximumWorkSpaceZoom = 16.0;
+
+        // Stops LostKeyboardFocus from trying to parse the percentage text while this
+        // code is programmatically refreshing it.
+        private bool _updatingZoomPercentText;
+
+        /// <summary>
+        /// Returns value constrained to the inclusive range minimum through maximum.
+        /// Kept here instead of Math.Clamp so this works with older .NET targets.
+        /// </summary>
+        private static double LimitZoom(double value, double minimum, double maximum)
         {
-            UI_WorkImage.ZoomElement(delta, relativeTo);
+            if (value < minimum) return minimum;
+            if (value > maximum) return maximum;
+            return value;
+        }
+
+        /// <summary>
+        /// Gets the ScaleTransform used by UI_WorkImage's existing RenderTransform.
+        ///
+        /// This expects UI_WorkImage.RenderTransform to be a TransformGroup containing
+        /// one ScaleTransform and one TranslateTransform, which is also what the
+        /// existing ZoomElement / GetTranslateTransform code should be using.
+        /// </summary>
+        private ScaleTransform GetWorkSpaceScaleTransform()
+        {
+            TransformGroup group = UI_WorkImage.RenderTransform as TransformGroup;
+
+            if (group == null)
+            {
+                throw new InvalidOperationException(
+                    "UI_WorkImage.RenderTransform must be a TransformGroup containing " +
+                    "a ScaleTransform and a TranslateTransform.");
+            }
+
+            foreach (Transform transform in group.Children)
+            {
+                ScaleTransform scale = transform as ScaleTransform;
+
+                if (scale != null)
+                    return scale;
+            }
+
+            throw new InvalidOperationException(
+                "UI_WorkImage.RenderTransform does not contain a ScaleTransform.");
+        }
+
+        /// <summary>
+        /// Returns the current zoom factor: 1.0 is 100%, 0.5 is 50%, and 2.0 is 200%.
+        /// </summary>
+        private double GetWorkSpaceZoomFactor()
+        {
+            return GetWorkSpaceScaleTransform().ScaleX;
+        }
+
+        /// <summary>
+        /// Updates the visible percentage field to match the current image scale.
+        /// </summary>
+        private void UpdateZoomPercentBox()
+        {
+            if (UI_ZoomPercent == null)
+                return;
+
+            _updatingZoomPercentText = true;
+
+            try
+            {
+                double percent = GetWorkSpaceZoomFactor() * 100.0;
+
+                // Examples: 100, 66.67, 250. Avoids displaying unnecessary zeroes.
+                UI_ZoomPercent.Text = percent.ToString("0.##");
+            }
+            finally
+            {
+                _updatingZoomPercentText = false;
+            }
+        }
+
+        /// <summary>
+        /// Copies the image transforms to every visual that must track the image, then
+        /// redraws view-dependent items.
+        ///
+        /// Add other CopyTransforms calls here only if those elements need to move and
+        /// zoom with the image. UI_WorkBorder already does in the existing code.
+        /// </summary>
+        private void RefreshWorkSpaceZoomVisuals()
+        {
             UI_WorkBorder.CopyTransforms(UI_WorkImage);
+
+            // If these layers use their own transforms and must follow the image,
+            // uncomment/adapt the appropriate lines:
+            //
+            // UI_WorkCanvas.CopyTransforms(UI_WorkImage);
+            // UI_LabelCanvas.CopyTransforms(UI_WorkImage);
 
             // The bar is a length on screen, so magnifying the image lengthens it.
             RedrawScaleBar();
+
+            // Keep the new percentage control synchronized with wheel zoom, fit,
+            // reset, and direct percentage entry.
+            UpdateZoomPercentBox();
         }
 
+        /// <summary>
+        /// Changes the image scale while keeping the image point under anchorInImage
+        /// at the same displayed position. This is useful for percentage entry and
+        /// programmatic zoom commands.
+        ///
+        /// anchorInImage must be expressed in UI_WorkImage coordinates.
+        /// </summary>
+        private void SetWorkSpaceZoom(double requestedScale, Point anchorInImage)
+        {
+            double newScale = LimitZoom(
+                requestedScale,
+                MinimumWorkSpaceZoom,
+                MaximumWorkSpaceZoom);
+
+            ScaleTransform scale = GetWorkSpaceScaleTransform();
+            TranslateTransform translate = UI_WorkImage.GetTranslateTransform();
+
+            double oldScale = scale.ScaleX;
+
+            // Guard against an invalid or zero transform scale. The normal image state
+            // should always be positive, but this avoids a divide-by-zero failure.
+            if (oldScale <= 0)
+                oldScale = 1.0;
+
+            // If the requested scale is already in use, nothing needs moving. Refresh
+            // the field anyway, in case it contained incomplete or invalid user text.
+            if (Math.Abs(newScale - scale.ScaleX) < 0.000001)
+            {
+                RefreshWorkSpaceZoomVisuals();
+                return;
+            }
+
+            /*
+             * Preserve the image point beneath the anchor:
+             *
+             * imagePoint = (anchor - translation) / oldScale
+             * newTranslation = anchor - imagePoint * newScale
+             *
+             * This prevents a percentage change from appearing to jump to a different
+             * part of the photograph.
+             */
+            double imageX = (anchorInImage.X - translate.X) / oldScale;
+            double imageY = (anchorInImage.Y - translate.Y) / oldScale;
+
+            scale.ScaleX = newScale;
+            scale.ScaleY = newScale;
+
+            translate.X = anchorInImage.X - imageX * newScale;
+            translate.Y = anchorInImage.Y - imageY * newScale;
+
+            RefreshWorkSpaceZoomVisuals();
+        }
+
+        /// <summary>
+        /// Returns the centre of the visible workspace expressed in UI_WorkImage
+        /// coordinates. Explicit zoom commands use this as their stable anchor.
+        /// </summary>
+        private Point GetWorkSpaceCentreInImageCoordinates()
+        {
+            Point centreInWorkSpace = new Point(
+                UI_WorkSpace.ActualWidth / 2.0,
+                UI_WorkSpace.ActualHeight / 2.0);
+
+            return UI_WorkSpace.TranslatePoint(centreInWorkSpace, UI_WorkImage);
+        }
+
+        /// <summary>
+        /// Applies a scale that displays the entire image inside the workspace while
+        /// preserving the image aspect ratio, then centres it in the workspace.
+        /// </summary>
+        private void FitWorkSpaceImageToWindow()
+        {
+            // Leave a small visible gap between the image and workspace edges.
+            const double fitMargin = 16.0;
+
+            double availableWidth = UI_WorkSpace.ActualWidth - fitMargin * 2.0;
+            double availableHeight = UI_WorkSpace.ActualHeight - fitMargin * 2.0;
+
+            // ActualWidth and ActualHeight are the untransformed layout dimensions.
+            // They must be non-zero before fit can be calculated.
+            double imageWidth = UI_WorkImage.ActualWidth;
+            double imageHeight = UI_WorkImage.ActualHeight;
+
+            if (availableWidth <= 0 ||
+                availableHeight <= 0 ||
+                imageWidth <= 0 ||
+                imageHeight <= 0)
+            {
+                return;
+            }
+
+            // The smaller factor ensures both image dimensions fit in the available
+            // viewport and keeps the photograph's aspect ratio intact.
+            double fitScale = Math.Min(
+                availableWidth / imageWidth,
+                availableHeight / imageHeight);
+
+            fitScale = LimitZoom(
+                fitScale,
+                MinimumWorkSpaceZoom,
+                MaximumWorkSpaceZoom);
+
+            ScaleTransform scale = GetWorkSpaceScaleTransform();
+            TranslateTransform translate = UI_WorkImage.GetTranslateTransform();
+
+            scale.ScaleX = fitScale;
+            scale.ScaleY = fitScale;
+
+            // Place the scaled image in the middle of the workspace.
+            translate.X = (UI_WorkSpace.ActualWidth - imageWidth * fitScale) / 2.0;
+            translate.Y = (UI_WorkSpace.ActualHeight - imageHeight * fitScale) / 2.0;
+
+            RefreshWorkSpaceZoomVisuals();
+        }
+
+        /// <summary>
+        /// Handles mouse-wheel zoom. The existing ZoomElement implementation remains
+        /// responsible for its current wheel increment and cursor-centred behavior.
+        /// </summary>
+        private void UpdateWorkSpaceZoom(double delta, Point relativeTo)
+        {
+            UI_WorkImage.ZoomElement(delta, relativeTo);
+
+            RefreshWorkSpaceZoomVisuals();
+        }
+
+        /// <summary>
+        /// Restores the image's existing default zoom behavior, normally 100% with no
+        /// pan offset, and refreshes the explicit zoom controls afterwards.
+        /// </summary>
         private void ResetWorkSpaceZoom()
         {
             UI_WorkImage.ResetZoom();
-            UI_WorkBorder.CopyTransforms(UI_WorkImage);
-            RedrawScaleBar();
+
+            RefreshWorkSpaceZoomVisuals();
         }
+
+        /// <summary>
+        /// Commits a number typed into the Zoom percentage box. The user can type
+        /// either "125" or "125%".
+        /// </summary>
+        private void ApplyZoomPercentText()
+        {
+            if (UI_ZoomPercent == null)
+                return;
+
+            string text = UI_ZoomPercent.Text;
+
+            if (text == null)
+            {
+                UpdateZoomPercentBox();
+                return;
+            }
+
+            text = text.Trim();
+
+            // Allow users to type either "150" or "150%".
+            if (text.EndsWith("%"))
+                text = text.Substring(0, text.Length - 1).Trim();
+
+            double percentage;
+
+            bool validPercentage = double.TryParse(
+                text,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.CurrentCulture,
+                out percentage);
+
+            // Zero and negative zooms do not make sense. Invalid text is replaced by
+            // the actual current zoom instead of leaving misleading text in the box.
+            if (!validPercentage || percentage <= 0)
+            {
+                UpdateZoomPercentBox();
+                return;
+            }
+
+            double requestedScale = percentage / 100.0;
+
+            SetWorkSpaceZoom(
+                requestedScale,
+                GetWorkSpaceCentreInImageCoordinates());
+        }
+
+        /// <summary>
+        /// Enter applies the typed percentage. Escape discards edits and restores the
+        /// currently active zoom percentage.
+        /// </summary>
+        private void ZoomPercent_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                ApplyZoomPercentText();
+
+                // Return focus to the workspace so measurement/drawing shortcuts work
+                // immediately after entering a zoom value.
+                UI_WorkCanvas.Focus();
+
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Escape)
+            {
+                UpdateZoomPercentBox();
+
+                UI_WorkCanvas.Focus();
+
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// Applying on focus loss also covers clicking Fit, 100%, or another control
+        /// after typing a value, without requiring the user to press Enter first.
+        /// </summary>
+        private void ZoomPercent_LostKeyboardFocus(
+            object sender,
+            KeyboardFocusChangedEventArgs e)
+        {
+            if (_updatingZoomPercentText)
+                return;
+
+            ApplyZoomPercentText();
+        }
+
+        /// <summary>
+        /// Fits the whole image into the available workspace.
+        /// </summary>
+        private void ZoomFit_Click(object sender, RoutedEventArgs e)
+        {
+            FitWorkSpaceImageToWindow();
+
+            UI_WorkCanvas.Focus();
+        }
+
+        /// <summary>
+        /// Restores the existing 100% / reset view behavior.
+        /// </summary>
+        private void Zoom100_Click(object sender, RoutedEventArgs e)
+        {
+            ResetWorkSpaceZoom();
+
+            UI_WorkCanvas.Focus();
+        }
+
 
         // =====================
         // Open image
@@ -227,6 +563,8 @@ namespace DinoLino
             // with the corrected pixels. Bound above, so this brings back the arriving
             // specimen's own corrections, and does nothing for one that has none.
             ReapplyImageAdjustments();
+
+            InitialiseWorkSpaceZoomForLoadedImage();
 
             Dispatcher.BeginInvoke(
                 System.Windows.Threading.DispatcherPriority.Loaded,

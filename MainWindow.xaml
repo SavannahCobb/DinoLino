@@ -166,6 +166,7 @@
                     - Draw mode
             - Work Space
         -->
+
         <!-- Tips Bar -->
         <Border x:Name="UI_TipsBar"
         DockPanel.Dock="Bottom"
@@ -180,6 +181,232 @@
                VerticalAlignment="Center"
                TextWrapping="Wrap"/>
         </Border>
+
+        <!-- Collapsible Zoom / Flip / Rotate bar -->
+        <Grid DockPanel.Dock="Top"
+      HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StatusBar Grid.Column="0">
+                <StatusBar.Style>
+                    <Style TargetType="StatusBar">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=UI_ViewBarToggle}"
+                                 Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StatusBar.Style>
+
+                <!-- Zoom -->
+                <StatusBarItem>
+                    <TextBlock Text="Zoom:"
+                       VerticalAlignment="Center"/>
+                </StatusBarItem>
+
+                <StatusBarItem>
+                    <TextBox x:Name="UI_ZoomPercent"
+                     Width="58"
+                     Text="100"
+                     HorizontalContentAlignment="Right"
+                     VerticalContentAlignment="Center"
+                     ToolTip="Enter a zoom percentage, then press Enter."
+                     KeyDown="ZoomPercent_KeyDown"
+                     LostKeyboardFocus="ZoomPercent_LostKeyboardFocus"/>
+                </StatusBarItem>
+
+                <StatusBarItem Padding="0">
+                    <TextBlock Text="%"
+                       VerticalAlignment="Center"/>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <StatusBarItem>
+                    <Button x:Name="UI_Zoom100"
+                    Content="100%"
+                    Click="Zoom100_Click"
+                    ToolTip="Show the image at its actual pixel size."
+                    Margin="4,0,0,0"/>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <!-- Flip horizontal: left/right shapes across a vertical mirror axis. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_FlipHorizontal"
+                            Click="Menu_FlipHorizontal"
+                            ToolTip="Flip the image horizontally (left to right)."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 2,4 L 8,10 L 2,16 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 20,4 L 14,10 L 20,16 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 11,1 L 11,19"
+                              Stroke="#666666"
+                              StrokeThickness="1"
+                              StrokeDashArray="2,2"/>
+                            </Canvas>
+                            <TextBlock Text="Flip Horizontal"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <!-- Flip vertical: top/bottom shapes across a horizontal mirror axis. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_FlipVertical"
+                            Click="Menu_FlipVertical"
+                            ToolTip="Flip the image vertically (top to bottom)."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 4,2 L 11,8 L 18,2 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 4,18 L 11,12 L 18,18 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 1,10 L 21,10"
+                              Stroke="#666666"
+                              StrokeThickness="1"
+                              StrokeDashArray="2,2"/>
+                            </Canvas>
+                            <TextBlock Text="Flip Vertical"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <!-- Counterclockwise rotation. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_RotateLeft"
+                            Click="Menu_RotateLeft"
+                            ToolTip="Rotate the image 90° counterclockwise."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 6,14 A 7,7 0 1 1 17,7"
+                              Stroke="#4389C7"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              Fill="Transparent"/>
+                                <Path Data="M 2,11 L 6,16 L 10,11 Z"
+                              Fill="#4389C7"/>
+                            </Canvas>
+                            <TextBlock Text="Rotate Left"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <!-- Clockwise rotation. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_RotateRight"
+                            Click="Menu_RotateRight"
+                            ToolTip="Rotate the image 90° clockwise."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 16,14 A 7,7 0 1 0 5,7"
+                              Stroke="#4389C7"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              Fill="Transparent"/>
+                                <Path Data="M 20,11 L 16,16 L 12,11 Z"
+                              Fill="#4389C7"/>
+                            </Canvas>
+                            <TextBlock Text="Rotate Right"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <!-- Screenshot: camera icon plus command text. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_TakeScreenshot"
+                      Click="Menu_Screenshot"
+                      ToolTip="Capture the visible workspace as an image."
+                      Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                              Height="20"
+                              Margin="0,0,5,0">
+                                <!-- Camera body -->
+                                <Path Data="M 2,6
+                                       L 6,6
+                                       L 8,3
+                                       L 14,3
+                                       L 16,6
+                                       L 20,6
+                                       L 20,17
+                                       L 2,17 Z"
+                                Fill="#4389C7"
+                                Stroke="#2B5D8A"
+                                StrokeThickness="1"/>
+
+                                <!-- Lens -->
+                                <Ellipse Width="8"
+                                   Height="8"
+                                   Canvas.Left="7"
+                                   Canvas.Top="8"
+                                   Fill="#F5F5F5"
+                                   Stroke="#2B5D8A"
+                                   StrokeThickness="1"/>
+
+                                <Ellipse Width="4"
+                                   Height="4"
+                                   Canvas.Left="9"
+                                   Canvas.Top="10"
+                                   Fill="#4389C7"/>
+                            </Canvas>
+
+                            <TextBlock Text="Take Screenshot"
+                                 VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+            </StatusBar>
+
+            <!-- Always visible: occupies the same right-hand column in both states. -->
+            <ToggleButton x:Name="UI_ViewBarToggle"
+                  Grid.Column="1"
+                  Width="25"
+                  MinHeight="25"
+                  IsChecked="True"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  ToolTip="Show or hide the Zoom, Flip, and Rotate bar.">
+                <ToggleButton.Style>
+                    <Style TargetType="ToggleButton">
+                        <Setter Property="Content" Value="+"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Content" Value="−"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ToggleButton.Style>
+            </ToggleButton>
+        </Grid>
+
         <Grid x:Name="UI_MainWindow">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="0.28*" MinWidth="150" MaxWidth="550"/>
@@ -566,7 +793,7 @@
                             </TextBlock>
                         </Canvas>
                     </Border>
-                    
+
                     <!-- Navigation window overlay: draggable, resizable overview of the whole image
                      (Settings ▸ See Navigation Window). Clicking or dragging on the picture pans the
                      zoomed workspace view to that spot. -->
@@ -754,7 +981,7 @@
                                             Click="Workshop_ExportGeometric"/>
                                 </StackPanel>
                             </Grid>
-                            
+
                             <Grid Style="{StaticResource WorkshopRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
