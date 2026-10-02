@@ -710,6 +710,25 @@ namespace DinoLino
             UpdateWorkSpaceZoom(e.Delta, e.GetPosition(UI_WorkImage));
         }
 
+        /// <summary>
+        /// After layout has run, fit the newly loaded photograph into the available
+        /// workspace and display the resulting zoom percentage.
+        ///
+        /// Call this after assigning UI_WorkImage.Source when a new photograph opens.
+        /// It is deliberately not called from every resize event: resizing a window
+        /// should not unexpectedly discard a user's deliberately chosen close-up view.
+        /// </summary>
+        private void InitialiseWorkSpaceZoomForLoadedImage()
+        {
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    FitWorkSpaceImageToWindow();
+                    UpdateZoomPercentBox();
+                }),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
         // ---- Horizontal scrolling ----
 
         // WPF raises no event for WM_MOUSEHWHEEL, the message a two-finger
