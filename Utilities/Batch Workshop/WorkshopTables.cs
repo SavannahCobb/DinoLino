@@ -1,6 +1,7 @@
 ﻿using DinoLino.Utilities.Operations;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using ShapeConstraint = DinoLino.Utilities.Modes.DrawMode.ShapeConstraint;
 
@@ -218,6 +219,12 @@ namespace DinoLino.Utilities
     {
         public Type OperationType;
 
+        /// The operation as the user knows it — Circular Arc, Triangle, Ellipse. The
+        /// type alone will not do: one type covers several kinds, since a drawn
+        /// rectangle and a drawn circle are both a ShapeOperation told apart by the
+        /// filter below. Written into the long export's Operation column.
+        public string Name;
+
         // Extra condition beyond the type, e.g. outlines that have metadata, or
         // shapes drawn with one particular constraint.
         public Func<WorkOperation, bool> Filter;
@@ -268,6 +275,12 @@ namespace DinoLino.Utilities
         // Excludes Specimen, Attempt, and the specimen group columns, all of which
         // are added by the consumers.
         public string[] MeasurementHeaders;
+
+        /// The operation each measurement column came from, aligned with
+        /// MeasurementHeaders. Formula columns are appended after these, so this array
+        /// is the shorter of the two and a column past its end belongs to no one
+        /// operation. Null on a table not built from column groups.
+        public string[] ColumnOperations;
 
         public List<WorkshopBlock> Blocks = new List<WorkshopBlock>();
 
@@ -323,6 +336,164 @@ namespace DinoLino.Utilities
             return (headers, rows);
         }
 
+        /// <summary>
+        /// The long shape's column names: what identifies a value, then the value and
+        /// its unit. One row per specimen, replicate, operation and variable: the shape
+        /// ggplot2 and pandas read as they are given it. A package wanting one row per
+        /// specimen — geomorph, Momocs — is pivoted to from here rather than read into
+        /// directly, which is the reason Operation and Replicate are columns of their
+        /// own: a pivot needs a key it can trust.
+        ///
+        /// The unit is a column of its own so Value is a bare number. A wide cell reads
+        /// "12.40 mm", which makes the whole column text in R; split, Value stays
+        /// numeric and the unit is still there to be checked or grouped by.
+        /// </summary>
+        public static string[] LongHeaders()
+        {
+            var headers = new List<string> { "Specimen" };
+            headers.AddRange(SpecimenGroups.Columns);
+            headers.Add("Replicate");
+            headers.Add("Operation");
+            headers.Add("Variable");
+            headers.Add("Value");
+            headers.Add("Unit");
+
+            return headers.ToArray();
+        }
+
+        /// <summary>
+        /// Adds one specimen's values from this table to a long-shape file. Called once
+        /// per mode for the same specimen, so a file can hold the whole session with one
+        /// specimen's rows together.
+        ///
+        /// An empty cell is left out: in this shape a blank row would say only that a
+        /// measurement was not taken, which its absence already says, and these tables
+        /// are mostly blank — one attempt rarely uses every tool of a mode. Hidden
+        /// columns are left out too, the same as in the wide shape.
+        /// </summary>
+        public void AppendLongRows(List<string[]> into, int blockIndex)
+        {
+            if (into == null || blockIndex < 0 || blockIndex >= Blocks.Count) return;
+
+            var block = Blocks[blockIndex];
+            var groupValues = SpecimenGroups.ValuesFor(block.Name);
+            int groupCount = SpecimenGroups.Columns.Count;
+            var keep = VisibleColumnIndexes();
+
+            foreach (var row in block.Rows)
+            {
+                foreach (int column in keep)
+                {
+                    string cell = row.Cells[column];
+                    if (string.IsNullOrWhiteSpace(cell)) continue;
+
+                    string value, unit;
+                    LongValue(cell, out value, out unit);
+
+                    var cells = new string[groupCount + 6];
+                    int i = 0;
+
+                    cells[i++] = block.Name;
+                    for (int g = 0; g < groupCount; g++) cells[i++] = groupValues[g];
+                    cells[i++] = row.Attempt > 0 ? row.Attempt.ToString() : "";
+                    cells[i++] = OperationOf(column);
+                    cells[i++] = MeasurementHeaders[column];
+                    cells[i++] = value;
+                    cells[i] = unit;
+
+                    into.Add(cells);
+                }
+            }
+        }
+
+        // The operation a column came from. A formula column is appended after the ones
+        // the groups contributed, so it falls past the end of the array and belongs to
+        // no single operation.
+        /// Names the operation for the columns past the ones the groups contributed —
+        /// the user's own formula columns, which Apply appends after them. The label
+        /// carries the table they were made on, since two modes may each hold a formula
+        /// column of the same name and a file holding both would otherwise give the two
+        /// the same specimen, replicate, operation and variable.
+        public void LabelFormulaColumns(string label)
+        {
+            if (MeasurementHeaders == null || ColumnOperations == null) return;
+
+            int first = ColumnOperations.Length;
+            if (MeasurementHeaders.Length <= first) return;
+
+            Array.Resize(ref ColumnOperations, MeasurementHeaders.Length);
+            for (int i = first; i < ColumnOperations.Length; i++)
+                ColumnOperations[i] = label;
+        }
+
+        private string OperationOf(int column) =>
+            ColumnOperations != null && column < ColumnOperations.Length
+                ? ColumnOperations[column] ?? ""
+                : "Formula";
+
+        /// <summary>
+        /// One wide cell as a long row's Value and Unit. Value is kept a number in every
+        /// row, because one piece of text anywhere in the column makes the whole column
+        /// text in R and an object column in pandas, and a plot drawn against it then
+        /// fails or sorts the numbers as words.
+        /// </summary>
+        /// <remarks>
+        /// So the three cells that hold no number are written as numbers or as nothing:
+        /// a yes/no flag becomes 1 or 0, labelled boolean; a ratio the geometry leaves
+        /// undefined becomes empty, which is NA to both; and a formula's error becomes
+        /// empty labelled error, so the row still says a value was expected here and the
+        /// column can be found with a search.
+        /// </remarks>
+        private static void LongValue(string cell, out string value, out string unit)
+        {
+            if (cell == "yes" || cell == "no")
+            {
+                value = cell == "yes" ? "1" : "0";
+                unit = "boolean";
+                return;
+            }
+
+            if (cell == "N/A")
+            {
+                value = "";
+                unit = "";
+                return;
+            }
+
+            if (cell == "#ERR")
+            {
+                value = "";
+                unit = "error";
+                return;
+            }
+
+            SplitValue(cell, out value, out unit);
+        }
+
+        /// Splits a formatted cell into its number and its unit. Every cell carrying a
+        /// unit was written as the number, a space, then the unit — 12.40 mm, 812.40 mm²,
+        /// 4.0 px — so the first space divides them, and the head is only taken as the
+        /// value when it reads as a number. Anything else is passed through whole with
+        /// no unit; the degrees, ratios and counts the wide table writes bare arrive
+        /// here as a bare number and keep an empty unit.
+        private static void SplitValue(string cell, out string value, out string unit)
+        {
+            value = cell;
+            unit = "";
+
+            int space = cell.IndexOf(' ');
+            if (space <= 0) return;
+
+            string head = cell.Substring(0, space);
+
+            double parsed;
+            if (!double.TryParse(head, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed))
+                return;
+
+            value = head;
+            unit = cell.Substring(space + 1).Trim();
+        }
+
         /// <summary>True when no specimen contributed an actual measurement.</summary>
         public bool IsEmpty =>
             Blocks.All(b => b.Rows.All(r => r.Operations.Count == 0));
@@ -368,6 +539,10 @@ namespace DinoLino.Utilities
         {
             var headers = new List<string>();
 
+            // The operation behind each column, built alongside the names so the long
+            // export can say which tool a value came from.
+            var operations = new List<string>();
+
             // Column index where each group's columns start, so a group can write into
             // its own slice of the row and leave the rest blank.
             var offsets = new int[groups.Count];
@@ -376,13 +551,17 @@ namespace DinoLino.Utilities
             {
                 offsets[g] = headers.Count;
                 foreach (var column in groups[g].Columns)
+                {
                     headers.Add(column.Header);
+                    operations.Add(groups[g].Name ?? "");
+                }
             }
 
             var table = new WorkshopTable
             {
                 Key = key,
-                MeasurementHeaders = headers.ToArray()
+                MeasurementHeaders = headers.ToArray(),
+                ColumnOperations = operations.ToArray()
             };
 
             if (undoRedo != null) AddBlocks(table, groups, offsets, undoRedo, currentName, scales);
@@ -390,6 +569,7 @@ namespace DinoLino.Utilities
             // The user's own columns for this table, calculated from the measurement
             // columns and carried into every export, plot and analysis built from it.
             WorkshopFormulaEvaluator.Apply(table, formulaKey ?? key);
+            table.LabelFormulaColumns(FormulaOperation(formulaKey ?? key));
 
             return table;
         }
@@ -495,6 +675,34 @@ namespace DinoLino.Utilities
             };
         }
 
+        // Columns that have been renamed, and what they are called now. A name is what
+        // a saved selection, a hidden column and a formula all refer to, so a project
+        // written before the rename would otherwise come back having quietly lost them.
+        private static readonly Dictionary<string, string> RenamedColumns =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "tri_anglea", "angle_a" },
+                { "tri_angleb", "angle_b" },
+                { "tri_anglec", "angle_c" }
+            };
+
+        /// What a column name saved by an earlier version is called in this one. A name
+        /// this version already uses is returned unchanged, so translating twice is the
+        /// same as translating once.
+        public static string CurrentColumnName(string saved)
+        {
+            if (string.IsNullOrEmpty(saved)) return saved;
+
+            string current;
+            return RenamedColumns.TryGetValue(saved, out current) ? current : saved;
+        }
+
+        /// What a formula column's operation reads. The key is what a project files a
+        /// table's formula columns under, and it is the tab's name but for Draw, whose
+        /// columns are filed under Shape.
+        private static string FormulaOperation(string key) =>
+            "Formula (" + (key == "Shape" ? "Draw" : key) + ")";
+
         public static string KeyFor(WorkshopCategory category)
         {
             switch (category)
@@ -567,6 +775,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(CircularArcOperation),
+                            Name = "Circular Arc",
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("circ_centangle", o => GeomOpHistoryWindow.Fmt(((CircularArcOperation)o).CentralAngle)),
@@ -578,6 +787,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(ParabolaOperation),
+                            Name = "Parabolic Arc",
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("para_chordarc", o => GeomOpHistoryWindow.Fmt(((ParabolaOperation)o).PChordArcRatio)),
@@ -589,6 +799,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(SplineOperation),
+                            Name = "n-Point Spline",
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("spline_turnangle", o => GeomOpHistoryWindow.Fmt(((SplineOperation)o).TurningAngleArcRatio)),
@@ -604,11 +815,12 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(GetAngleOperation),
+                            Name = "Triangle",
                             Columns = new List<WorkshopColumn>
                             {
-                                Col("tri_anglea", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleA)),
-                                Col("tri_angleb", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleB)),
-                                Col("tri_anglec", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleC)),
+                                Col("angle_a", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleA)),
+                                Col("angle_b", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleB)),
+                                Col("angle_c", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).AngleC)),
                                 Col("tri_aspect", o => GeomOpHistoryWindow.Fmt(((GetAngleOperation)o).TriAspectRatio)),
                                 Col("tri_area", o => GeomOpHistoryWindow.FmtArea(((GetAngleOperation)o).TriAreaImagePixels, scales.Current))
                             }
@@ -619,6 +831,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(AxisAngleOperation),
+                            Name = "Axis Angle",
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("axis_angle", o =>
@@ -643,6 +856,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(LineOperation),
+                            Name = "Line",
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("line_length", o => GeomOpHistoryWindow.FmtLength(((LineOperation)o).LineLengthImagePixels, scales.Current)),
@@ -665,6 +879,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(OutlineOperation),
+                            Name = "Outline",
                             Filter = o => ((OutlineOperation)o).HasMetadata,
                             Columns = new List<WorkshopColumn>
                             {
@@ -693,6 +908,7 @@ namespace DinoLino.Utilities
                         new WorkshopColumnGroup
                         {
                             OperationType = typeof(OutlineOperation),
+                            Name = "Outline",
                             Columns = new List<WorkshopColumn>
                             {
                                 Col("outline_vertices", o => VertexCount((OutlineOperation)o).ToString()),
@@ -716,6 +932,10 @@ namespace DinoLino.Utilities
             var group = new WorkshopColumnGroup
             {
                 OperationType = typeof(ShapeOperation),
+
+                // The kind, not the type: a rectangle and a circle are both a
+                // ShapeOperation and only the filter tells them apart.
+                Name = kind.ToString(),
                 Filter = o => ((ShapeOperation)o).ShapeKind == kind
             };
 
@@ -745,6 +965,7 @@ namespace DinoLino.Utilities
             var group = new WorkshopColumnGroup
             {
                 OperationType = typeof(OutlineOperation),
+                Name = "EFA",
                 Filter = o => HarmonicsOf((OutlineOperation)o) > 0
             };
 

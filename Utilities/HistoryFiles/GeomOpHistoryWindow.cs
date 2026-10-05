@@ -38,6 +38,12 @@ namespace DinoLino.Utilities
         // the list of variables keeps its place.
         private ContentControl _customData;
 
+        // Whether the footer exports one long CSV instead of a workbook. Static so the
+        // choice outlives one window, the way the staged sheets do: it is a way of working
+        // rather than a property of any one table. The per-tab Export to CSV buttons are
+        // unaffected — a single table read on its own is what the wide shape is good at.
+        private static bool _longCsv;
+
         private TextBlock _workbookStatus;
         private Button _exportWorkbookButton;
 
@@ -203,7 +209,7 @@ namespace DinoLino.Utilities
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
             var footer = BuildWorkbookFooter();
-            UpdateWorkbookStatus();
+            UpdateFooter();
 
             BuildTabs();
 
@@ -250,7 +256,7 @@ namespace DinoLino.Utilities
             if (_suspendRebuild) return;
 
             BuildTabs();
-            UpdateWorkbookStatus();
+            UpdateFooter();
         }
 
         // Draws the tab strip, keeping the user on the tab they were reading. Only that
@@ -1025,7 +1031,7 @@ namespace DinoLino.Utilities
 
                 ProjectSession.MarkChanged();
                 addButton.Content = WorkbookButtonLabel(IsInWorkbook(header));
-                UpdateWorkbookStatus();
+                UpdateFooter();
             };
 
             var csvButton = new Button
@@ -1128,6 +1134,9 @@ namespace DinoLino.Utilities
 
         // Every variable of every mode, ticked into or out of the custom table, with
         // that table's own formula columns underneath.
+        // The scroll position of the variable list, kept apart from the table's own.
+        private const string VariableScrollKey = "Custom:variables";
+
         private FrameworkElement BuildVariablePicker()
         {
             var panel = new StackPanel { Margin = new Thickness(4, 4, 8, 4) };
@@ -1137,15 +1146,6 @@ namespace DinoLino.Utilities
                 Text = "Variables",
                 FontWeight = FontWeights.Bold,
                 Margin = new Thickness(4, 4, 4, 2)
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Tick what the table should hold. Attempt 1 of each kind shares a row, "
-                       + "attempt 2 the next, and so on.",
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = Brushes.Gray,
-                Margin = new Thickness(4, 0, 4, 4)
             });
 
             var clear = new Button
@@ -1177,12 +1177,31 @@ namespace DinoLino.Utilities
 
             foreach (var group in catalog)
             {
-                panel.Children.Add(new TextBlock
+                var captured = group;
+
+                // Ticked only while every variable below it is ticked, so it reads as a
+                // summary of them rather than a setting of its own.
+                var whole = new CheckBox
                 {
-                    Text = group.Title,
+                    Content = group.Title,
                     FontWeight = FontWeights.Bold,
-                    Margin = new Thickness(4, 8, 4, 2)
-                });
+                    IsChecked = group.IsAllSelected,
+                    Margin = new Thickness(4, 8, 4, 2),
+                    ToolTip = "Put every variable below into the table, or take them all out"
+                };
+
+                whole.Click += (s, e) =>
+                {
+                    CustomTableSelection.SetGroupSelected(
+                        captured.Category, captured.Headers, whole.IsChecked == true);
+
+                    // Every tick below this one has just changed as well as the table, so
+                    // the whole tab is redrawn rather than only its grids, the same as
+                    // Clear all does.
+                    BuildTabs();
+                };
+
+                panel.Children.Add(whole);
 
                 foreach (var header in group.Headers)
                 {
@@ -1191,7 +1210,7 @@ namespace DinoLino.Utilities
 
                     var tick = new CheckBox
                     {
-                        Content = name,
+                        Content = NameLabel(name),
                         IsChecked = CustomTableSelection.IsSelected(name),
                         Margin = new Thickness(8, 1, 4, 1)
                     };
@@ -1249,17 +1268,24 @@ namespace DinoLino.Utilities
                 }
             }
 
+            var variables = new ScrollViewer
+            {
+                Content = panel,
+                Width = 210,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+
+            // Ticking a group header redraws the whole tab, and this list is where the
+            // ticking happens, so without this the list jumps back to the top on every
+            // click of it.
+            RememberScroll(variables, VariableScrollKey);
+
             return new Border
             {
                 BorderBrush = Brushes.LightGray,
                 BorderThickness = new Thickness(0, 0, 1, 0),
-                Child = new ScrollViewer
-                {
-                    Content = panel,
-                    Width = 210,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-                }
+                Child = variables
             };
         }
 
@@ -1327,6 +1353,13 @@ namespace DinoLino.Utilities
         private static string WorkbookButtonLabel(bool added) =>
             added ? "\u2713 Added to workbook" : "Add to workbook";
 
+        // A column name shown as a control's content rather than as plain text. A
+        // CheckBox and a DataGrid column header both pass their content through
+        // access-key handling, which swallows a single underscore: circ_centangle draws
+        // as circcentangle, with the c underlined. A TextBlock is content in its own
+        // right rather than text to be read for a shortcut, so the name shows as written.
+        private static TextBlock NameLabel(string text) => new TextBlock { Text = text };
+
         private static TextBlock SpecimenHeader(string name) => new TextBlock
         {
             Text = name,
@@ -1360,7 +1393,7 @@ namespace DinoLino.Utilities
         {
             grid.Columns.Add(new DataGridTextColumn
             {
-                Header = header,
+                Header = NameLabel(header),
                 Binding = new Binding(path),
                 IsReadOnly = true,
                 Width = fixedWidth.HasValue
@@ -1423,14 +1456,38 @@ namespace DinoLino.Utilities
 
             _exportWorkbookButton = new Button
             {
-                Content = "Export workbook…",
                 Padding = new Thickness(12, 4, 12, 4)
             };
-            _exportWorkbookButton.Click += (s, e) => ExportWorkbook();
+            _exportWorkbookButton.Click += (s, e) =>
+            {
+                if (_longCsv) ExportLongCsv();
+                else ExportWorkbook();
+            };
+
+            var longFormat = new CheckBox
+            {
+                Content = "Long format CSV",
+                IsChecked = _longCsv,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 16, 0),
+                ToolTip = "Export one CSV file covering every mode instead of a workbook of "
+                        + "sheets: a row for each specimen, replicate, operation and variable, "
+                        + "with the unit in a column of its own. The shape ggplot2 and "
+                        + "pandas read as they are given it, and the one to pivot from for "
+                        + "a package wanting a row per specimen."
+            };
+
+            longFormat.Click += (s, e) =>
+            {
+                _longCsv = longFormat.IsChecked == true;
+                UpdateFooter();
+            };
 
             var bar = new DockPanel { Margin = new Thickness(8, 6, 8, 6) };
             DockPanel.SetDock(_exportWorkbookButton, Dock.Right);
             bar.Children.Add(_exportWorkbookButton);
+            DockPanel.SetDock(longFormat, Dock.Right);
+            bar.Children.Add(longFormat);
             bar.Children.Add(_workbookStatus);
 
             return new Border
@@ -1441,13 +1498,32 @@ namespace DinoLino.Utilities
             };
         }
 
-        private void UpdateWorkbookStatus()
+        /// What the footer's one button writes, and what it says it will write. The long
+        /// export covers every mode whatever is staged, so the staged count has nothing to
+        /// say about it; the button is live either way, since there is always a file to
+        /// write even when the session holds no measurements yet.
+        private void UpdateFooter()
         {
+            if (_workbookStatus == null || _exportWorkbookButton == null) return;
+
+            if (_longCsv)
+            {
+                _workbookStatus.Text = "Every mode in one file, one value to a row";
+                _exportWorkbookButton.Content = "Export long CSV…";
+                _exportWorkbookButton.ToolTip =
+                    "Write geometric_data_long.csv: every mode's measurements in one table, "
+                    + "a specimen's rows together";
+                _exportWorkbookButton.IsEnabled = true;
+                return;
+            }
+
             int n = _selectedSheets.Count;
             _workbookStatus.Text = n == 0
                 ? "No tables added to workbook"
                 : n == 1 ? "1 table added to workbook"
                          : $"{n} tables added to workbook";
+            _exportWorkbookButton.Content = "Export workbook…";
+            _exportWorkbookButton.ToolTip = "Write the added tables as one sheet each";
             _exportWorkbookButton.IsEnabled = n > 0;
         }
 
@@ -1489,6 +1565,43 @@ namespace DinoLino.Utilities
             if (field.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0)
                 return "\"" + field.Replace("\"", "\"\"") + "\"";
             return field;
+        }
+
+        /// <summary>
+        /// Writes every mode's measurements as one long CSV. A specimen's rows are kept
+        /// together — all five modes for the first specimen, then all five for the next —
+        /// so the file reads in specimen order rather than in mode order, and a reader
+        /// grouping by specimen finds its rows in one place.
+        /// </summary>
+        /// <remarks>
+        /// The Custom tab is left out. It holds no measurements of its own, only variables
+        /// borrowed from the modes, so every value it shows is already in the file once
+        /// under the operation that produced it.
+        /// </remarks>
+        private void ExportLongCsv() =>
+            ExportCsv(
+                WorkshopTable.LongHeaders(),
+                BuildLongRows(_undoRedo, CurrentName, _scale),
+                "geometric_data_long.csv");
+
+        // Every mode's rows, interleaved by specimen. The tables are built once and then
+        // walked a specimen at a time; each holds one block per specimen in the same
+        // order, since every table is built from the same walk of history.
+        private static List<string[]> BuildLongRows(
+            UndoRedoManager ur, string currentName, ScaleSource scale)
+        {
+            var tables = Tabs.Select(spec => BuildTable(spec, ur, currentName, scale)).ToList();
+
+            int specimens = tables.Count > 0 ? tables.Max(t => t.Blocks.Count) : 0;
+            var rows = new List<string[]>();
+
+            for (int specimen = 0; specimen < specimens; specimen++)
+            {
+                foreach (var table in tables)
+                    table.AppendLongRows(rows, specimen);
+            }
+
+            return rows;
         }
 
         private void ExportWorkbook()
@@ -1793,14 +1906,21 @@ namespace DinoLino.Utilities
         // moment of export. The calibration is passed by value, and it is the one
         // belonging to the specimen whose row this is: a table spanning specimens
         // scaled differently gives each of them its own ratio and its own unit.
+        // The number is written with a decimal point whatever the machine's locale, the
+        // same as every other number in these tables. On a locale that writes a decimal
+        // comma, one table would otherwise read 0.85 for a ratio and 12,40 mm for a
+        // length, and the long export, which reads the number back out of the cell,
+        // would hand R and pandas a column of text.
         internal static string FmtLength(double imagePixels, ScaleState scale) =>
             scale.IsSet
-                ? $"{scale.ToUnitsFromImage(imagePixels):F2} {scale.Unit}"
+                ? scale.ToUnitsFromImage(imagePixels).ToString("F2", CultureInfo.InvariantCulture)
+                  + " " + scale.Unit
                 : $"{Math.Round(imagePixels, 1).ToString(CultureInfo.InvariantCulture)} px";
 
         internal static string FmtArea(double imagePixelArea, ScaleState scale) =>
             scale.IsSet
-                ? $"{scale.ToUnitsAreaFromImage(imagePixelArea):F2} {scale.Unit}\u00B2"
+                ? scale.ToUnitsAreaFromImage(imagePixelArea).ToString("F2", CultureInfo.InvariantCulture)
+                  + " " + scale.Unit + "\u00B2"
                 : $"{Math.Round(imagePixelArea, 1).ToString(CultureInfo.InvariantCulture)} px\u00B2";
 
         #endregion

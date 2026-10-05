@@ -302,6 +302,14 @@ Resting on Operation History offers two things to do with what has been measured
 Edit Operation History:
 Opens the tables of everything measured this session, one tab per mode -- Curvature, Angle, Draw, Outline and EFA -- plus a Custom tab. A tab shows that mode's whole table: every variable of the mode as a column, every attempt as a row, so one row holds every measurement made on the same attempt.
 Everything is done here. Read a table, delete a row or a whole specimen, hide a column, add a variable of your own from a formula, export the table on its own as a CSV, or stage it for the workbook. Deleting a row or a specimen is permanent and Ctrl + Z will not bring it back.
+
+Long format CSV:
+A box in the footer of the window. Off, the button beside it exports the tables added to the workbook, one sheet each. On, that button becomes Export long CSV and writes a single file, suggested as geometric_data_long.csv, holding every mode at once -- one table, no sheets and no tabs. This is the shape ggplot2 and pandas read as they are given it.
+One row carries one value, under these columns: Specimen, your group columns, Replicate, Operation, Variable, Value and Unit. Operation names the tool the value came from -- Circular Arc, Triangle, Ellipse, Line -- so a variable two tools both measure is still told apart, and a variable of your own from a formula reads Formula with its mode in brackets, as Formula (Curvature). Replicate is the attempt number, so three arcs on one specimen are three replicates rather than three columns. It counts within one operation and not across them -- the first outline carrying metadata and the first outline carrying an EFA need not be the same outline -- so Specimen and Replicate together are not a safe key for joining one operation's rows to another's.
+The unit has a column of its own, which keeps Value a number: a length reads 12.40 under Value and mm under Unit, not 12.40 mm in one cell. Degrees, ratios and counts arrive with Unit empty, since the tables record no unit for them. A yes or no cell is written 1 or 0 and labelled boolean, and a ratio the geometry leaves undefined is left empty, so it reads as missing rather than as text. One word anywhere in Value would make the whole column text and silently break a plot drawn against it, which is why none is written.
+A specimen's rows are kept together -- every mode for the first specimen, then every mode for the next. Empty cells are left out: a blank row would say only that a measurement was not taken, which its absence already says, and these tables are mostly blank. Hidden columns are left out, the same as in the wide shape. The Custom tab is not in the file, since every variable it shows is already there under the tool that measured it.
+geomorph and Momocs are a different case and the file is not read into them directly: both want one row or one array slice per specimen, and geomorph refuses inputs whose numbers of observations disagree. Pivot the long file to one row per specimen first -- in R, tidyr's pivot_wider over Operation and Variable, having decided what the replicates of a variable mean, whether the mean of them or one chosen attempt. Note also that neither package analyses measurements of this kind as shape: both are built on coordinates, so the tables here serve as the covariates and the derived variables beside a shape analysis rather than as its input.
+The Export to CSV button on each tab is unaffected and always writes that tab's table as it stands on screen, which is what one table read on its own is good for.
 The Custom tab joins ticked variables from any mode side by side. Columns may be added there and the Attempt heading retyped, but rows, specimens and columns are not deleted from it: a row there can belong to several modes at once, so there is no one measurement for a delete to mean.
 
 Export Operation History:
@@ -439,6 +447,7 @@ A project saved by an earlier version recorded its staged sheets under the old p
 Formula Columns:
 On any tab of the Operation History window, click Add column to make a new variable calculated from that table's columns. Enter a name of up to 14 characters and a formula, such as = outline_area / outline_perim^2. Column names may be typed straight into the formula, or found in the list beside it and inserted.
 A column you have made carries a pencil on its header, which opens the formula again to change or delete it. A formula naming a column its table does not have is listed under the table instead of calculated, so it can still be corrected.
+Angle Mode's three triangle angles were called tri_anglea, tri_angleb and tri_anglec in earlier versions and are now angle_a, angle_b and angle_c. A project saved under the old names keeps its ticked variables and its hidden columns, which are matched up when it opens; a formula written with an old name is reported on opening and needs the new one typed in.
 A column name in a formula stands for that column's value on the same row. Formulas use addition, subtraction, multiplication, division and powers, with brackets to group them. Comparisons are written = <> < <= > >= and give 1 or 0, as in IF(outline_area > 100, 1, 0).
 Row functions: SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT, MEDIAN, ABS, SQRT, LN, LOG, LOG10, EXP, POWER, MOD, ROUND, INT, SIGN, PI, SIN, COS, TAN, ASIN, ACOS, ATAN, ATAN2, DEGREES, RADIANS, IF, IFBLANK, ISBLANK.
 Whole-column functions, taken over every specimen: COLSUM, COLMEAN, COLMIN, COLMAX, COLCOUNT, COLMEDIAN, COLSD.
@@ -521,9 +530,9 @@ In Curvature Mode:
 "spline_length" = Length of n-Point Spline
 
 In Angle Mode:
-"tri_anglea" = Angle A of Triangle
-"tri_angleb" = Angle B of Triangle
-"tri_anglec" = Angle C of Triangle
+"angle_a" = Angle A of Triangle
+"angle_b" = Angle B of Triangle
+"angle_c" = Angle C of Triangle
 "tri_aspect" = Aspect Ratio of Triangle
 "tri_area" = Area of Triangle
 "axis_angle" = Angle from the specimen's axis to the line drawn, clockwise, in degrees
