@@ -954,28 +954,28 @@
 
                                                 <Canvas Width="24" Height="24">
                                                     <Rectangle Canvas.Left="2"
-                           Canvas.Top="8"
-                           Width="20"
-                           Height="8"
-                           Stroke="Black"
-                           StrokeThickness="2"
-                           Fill="Transparent"/>
+                                                               Canvas.Top="8"
+                                                               Width="20"
+                                                               Height="8"
+                                                               Stroke="Black"
+                                                               StrokeThickness="2"
+                                                               Fill="Transparent"/>
 
                                                     <Line X1="5" Y1="8" X2="5" Y2="12"
-                      Stroke="Black"
-                      StrokeThickness="2"/>
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
 
                                                     <Line X1="9" Y1="8" X2="9" Y2="14"
-                      Stroke="Black"
-                      StrokeThickness="2"/>
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
 
                                                     <Line X1="13" Y1="8" X2="13" Y2="12"
-                      Stroke="Black"
-                      StrokeThickness="2"/>
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
 
                                                     <Line X1="17" Y1="8" X2="17" Y2="14"
-                      Stroke="Black"
-                      StrokeThickness="2"/>
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
                                                 </Canvas>
                                             </Grid>
                                         </Viewbox>
@@ -992,33 +992,33 @@
                                             <Canvas Width="24" Height="24">
                                                 <!-- Horizontal axis -->
                                                 <Line X1="4" Y1="18" X2="20" Y2="18"
-                      Stroke="Black"
-                      StrokeThickness="2"
-                      StrokeStartLineCap="Round"
-                      StrokeEndLineCap="Round"/>
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"/>
 
                                                 <!-- Vertical axis -->
                                                 <Line X1="6" Y1="20" X2="6" Y2="4"
-                      Stroke="Black"
-                      StrokeThickness="2"
-                      StrokeStartLineCap="Round"
-                      StrokeEndLineCap="Round"/>
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"/>
 
                                                 <!-- X-axis arrowhead -->
                                                 <Path Data="M20,18 L16,15 M20,18 L16,21"
-                      Stroke="Black"
-                      StrokeThickness="2"
-                      StrokeStartLineCap="Round"
-                      StrokeEndLineCap="Round"
-                      Fill="Transparent"/>
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Fill="Transparent"/>
 
                                                 <!-- Y-axis arrowhead -->
                                                 <Path Data="M6,4 L3,8 M6,4 L9,8"
-                      Stroke="Black"
-                      StrokeThickness="2"
-                      StrokeStartLineCap="Round"
-                      StrokeEndLineCap="Round"
-                      Fill="Transparent"/>
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Fill="Transparent"/>
                                             </Canvas>
                                         </Viewbox>
                                     </Button>
