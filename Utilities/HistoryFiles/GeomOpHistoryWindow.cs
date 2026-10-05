@@ -1510,9 +1510,7 @@ namespace DinoLino.Utilities
             {
                 _workbookStatus.Text = "Every mode in one file, one value to a row";
                 _exportWorkbookButton.Content = "Export long CSV…";
-                _exportWorkbookButton.ToolTip =
-                    "Write geometric_data_long.csv: every mode's measurements in one table, "
-                    + "a specimen's rows together";
+                _exportWorkbookButton.ToolTip = null;
                 _exportWorkbookButton.IsEnabled = true;
                 return;
             }

@@ -675,7 +675,9 @@ namespace DinoLino
                     operation,
                     transform,
                     mode != null ? mode.LineColor : null,
-                    mode != null ? mode.LineThickness : WorkMode.DefaultLineThickness);
+                    mode != null ? mode.LineThickness : WorkMode.DefaultLineThickness,
+                    _currentFont,
+                    _currentFontSize);
 
                 // Drawn again for the view as it stands now. An operation carrying no
                 // geometry keeps whatever it was drawn with when it was made.

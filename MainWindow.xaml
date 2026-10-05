@@ -55,7 +55,7 @@
                 <MenuItem Header="_Restore Default Settings" Click="Menu_RestoreDefaults"
                           ToolTip="Return every remembered setting to how the program first opens, wherever its menu item lives."/>
             </MenuItem>
-            <MenuItem Header="_Edit" MouseLeave="Menu_MouseLeave">
+            <MenuItem Header="_Edit" MouseLeave="Menu_MouseLeave" SubmenuOpened="MenuEdit_SubmenuOpened">
                 <MenuItem Header="_Undo" x:Name="UI_MenuUndo" Click="Menu_Undo"  InputGestureText="Ctrl+Z"/>
                 <MenuItem Header="_Redo" x:Name="UI_MenuRedo" Click="Menu_Redo"  InputGestureText="Ctrl+Y"/>
                 <Separator/>
@@ -150,6 +150,7 @@
                 <MenuItem Header="_About" Click="Menu_About"/>
                 <MenuItem Header="_User Guide" Click="Menu_UserGuide"/>
                 <MenuItem Header="_Check for Updates" Click="Menu_CheckForUpdates"/>
+                <MenuItem Header="View _Log" Click="Menu_ViewLog"/>
             </MenuItem>
         </Menu>
 
@@ -935,6 +936,8 @@
                                             Padding="0"
                                             Margin="2,0,3,0"
                                             ToolTip="Clear specimen data"
+                                            IsEnabled="False"
+                                            Click="Menu_ClearSpecimen"
                                             Content="C">
                                     </Button>
 
@@ -944,6 +947,7 @@
                                             Height="26"
                                             Padding="0"
                                             Margin="2,0,3,0"
+                                            Click="Menu_SetScale"
                                             ToolTip="Set image scale">
 
                                         <Viewbox Width="16" Height="16">
@@ -987,6 +991,8 @@
                                             Height="26"
                                             Padding="0"
                                             Margin="2,0,0,0"
+                                            Click="Menu_AlignImage"
+                                            IsEnabled="False"
                                             ToolTip="Set image alignment">
                                         <Viewbox Width="16" Height="16">
                                             <Canvas Width="24" Height="24">

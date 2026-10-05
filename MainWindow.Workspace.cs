@@ -463,13 +463,26 @@ namespace DinoLino
             OpenFileDialog openFileDialog = new OpenFileDialog
             {
                 // Start in the Directory panel's working folder when one is set.
-                InitialDirectory = DialogInitialDirectory
+                InitialDirectory = DialogInitialDirectory,
+
+                // Several images may be picked at once, the way Explorer picks them:
+                // Shift or Ctrl with a click, or a box dragged round them.
+                Multiselect = true
             };
 
             if (openFileDialog.ShowDialog() != true)
                 return;
 
-            OpenImageFromPath(openFileDialog.FileName);
+            string[] chosen = openFileDialog.FileNames;
+
+            // One file opens exactly as it always has.
+            if (chosen.Length <= 1)
+            {
+                OpenImageFromPath(openFileDialog.FileName);
+                return;
+            }
+
+            OpenImagesFromPaths(chosen);
         }
 
         /// Loads an image file as a new specimen. Shared by the File menu and the
@@ -492,11 +505,15 @@ namespace DinoLino
             }
             catch (Exception ex)
             {
+                AppLog.WriteException("Could not open image " + System.IO.Path.GetFileName(path), ex);
+
                 MessageBox.Show(this,
                     $"Could not open this image:\n{ex.Message}",
                     "Open Image", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
+
+            AppLog.Write($"Opened image {System.IO.Path.GetFileName(path)} ({bmp.PixelWidth} x {bmp.PixelHeight})");
 
             // Only stash the outgoing specimen once the new image has actually loaded.
             if (SpecimenManager.HasOpenedImage)
@@ -614,6 +631,64 @@ namespace DinoLino
             UI_MenuReposition3D.IsEnabled = false;
         }
 
+        // Set while the mapping is being read a second time after layout, so that
+        // reading cannot ask for a third.
+        private bool _rereadingImageOrigin;
+        private bool _imageOriginRereadQueued;
+
+        /// <summary>
+        /// Where the picture's top left corner falls on the canvas the modes draw on.
+        /// </summary>
+        /// <remarks>
+        /// The canvas sits inside UI_WorkBorder, which takes its size from the picture
+        /// through a binding and is centred in the same cell. SizeChanged is raised on
+        /// the picture after that binding has been written but before the border has
+        /// been arranged again, so for that moment the border is still centred at its
+        /// old size and the distance from it to the picture is out by half the change
+        /// in size: half the picture, when the picture has just appeared. An origin
+        /// read then shifts every label by that much, lets a click store a position
+        /// off the picture, and holds a dragged label at the wrong edge, since the edge
+        /// is found through the same origin.
+        ///
+        /// While the two sizes disagree the origin is taken from where the canvas sits
+        /// inside the border, which is where they come to rest, and the mapping is read
+        /// once more when layout has finished.
+        /// </remarks>
+        private Point ImageOriginOnCanvas()
+        {
+            bool settled =
+                Math.Abs(UI_WorkBorder.ActualWidth - UI_WorkImage.ActualWidth) < 0.5 &&
+                Math.Abs(UI_WorkBorder.ActualHeight - UI_WorkImage.ActualHeight) < 0.5;
+
+            if (settled)
+                return UI_WorkImage.TranslatePoint(new Point(0, 0), UI_WorkCanvas);
+
+            if (!_rereadingImageOrigin && !_imageOriginRereadQueued)
+            {
+                _imageOriginRereadQueued = true;
+
+                Dispatcher.BeginInvoke(
+                    DispatcherPriority.Loaded,
+                    new Action(() =>
+                    {
+                        _imageOriginRereadQueued = false;
+                        _rereadingImageOrigin = true;
+
+                        try
+                        {
+                            SyncOutlineImageTransform();
+                        }
+                        finally
+                        {
+                            _rereadingImageOrigin = false;
+                        }
+                    }));
+            }
+
+            Point inset = UI_WorkCanvas.TranslatePoint(new Point(0, 0), UI_WorkBorder);
+            return new Point(-inset.X, -inset.Y);
+        }
+
         /// <summary>
         /// Aligns outline-mode coordinates with the displayed image after layout completes.
         /// </summary>
@@ -628,8 +703,7 @@ namespace DinoLino
             OutlineMode.ScaleX = displayW / WorkingImage.PixelWidth;
             OutlineMode.ScaleY = displayH / WorkingImage.PixelHeight;
 
-            // TranslatePoint gives the image's offset in canvas coordinates.
-            var imagePos = UI_WorkImage.TranslatePoint(new Point(0, 0), UI_WorkCanvas);
+            var imagePos = ImageOriginOnCanvas();
             OutlineMode.OffsetX = imagePos.X;
             OutlineMode.OffsetY = imagePos.Y;
 

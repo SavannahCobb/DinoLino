@@ -214,6 +214,18 @@ namespace DinoLino
                     return;
                 }
 
+                // Give up an operation part way through: a triangle short of a corner, a
+                // spline not yet finalized, an outline not yet confirmed. What it had
+                // drawn comes off the canvas and the next click starts afresh.
+                if (CurrentWorkMode != null && CurrentWorkMode.HasUnfinishedOperation)
+                {
+                    foreach (UIElement element in CurrentWorkMode.AbandonUnfinishedOperation())
+                        UI_WorkCanvas.Children.Remove(element);
+
+                    // An open drag has nothing left to extend.
+                    Mouse.Capture(null);
+                }
+
                 CurrentWorkMode?.CancelCurrentOperation();
                 e.Handled = true;
                 return;
@@ -711,8 +723,8 @@ namespace DinoLino
         }
 
         /// <summary>
-        /// After layout has run, fit the newly loaded photograph into the available
-        /// workspace and display the resulting zoom percentage.
+        /// After layout has run, show the newly loaded photograph at 100% with no pan
+        /// offset, which leaves it centred in the workspace, and display that percentage.
         ///
         /// Call this after assigning UI_WorkImage.Source when a new photograph opens.
         /// It is deliberately not called from every resize event: resizing a window
@@ -723,8 +735,7 @@ namespace DinoLino
             Dispatcher.BeginInvoke(
                 new Action(() =>
                 {
-                    FitWorkSpaceImageToWindow();
-                    UpdateZoomPercentBox();
+                    ResetWorkSpaceZoom();
                 }),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }

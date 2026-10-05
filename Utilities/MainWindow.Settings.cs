@@ -138,19 +138,57 @@ namespace DinoLino
             RestyleShownOperations();
         }
 
-        /// Draws the measurements already on screen again in the new style, so a
-        /// choice can be judged against the image rather than only against the next
-        /// thing drawn. With previous operations hidden there is nothing on screen to
-        /// restyle, and redrawing would clear a measurement half-made.
+        /// Puts the new style on the measurements already on screen, so a choice can be
+        /// judged against the image rather than only against the next thing drawn.
+        ///
+        /// The elements each operation was drawn with are restyled where they stand.
+        /// Drawing the operations again from their stored geometry would not do: that
+        /// brings back only the shape that was measured, so the working marks drawn
+        /// with it, the two radius lines and the angle mark of a circular arc among
+        /// them, would be taken off the screen by a change of color.
         private void RestyleShownOperations()
         {
             if (UI_SeePrevOps == null || !UI_SeePrevOps.IsChecked) return;
+            if (UndoRedoManager == null) return;
 
-            // A measurement part way through lives on the canvas and not yet in the
-            // history a rebuild draws from, so it would be wiped rather than restyled.
-            if (CurrentWorkMode != null && !CurrentWorkMode.IsStartingNewOperation) return;
+            foreach (var operation in UndoRedoManager.History)
+            {
+                // A label placed in Draw mode belongs to no mode and keeps its own look.
+                var mode = operation.SourceMode;
+                if (mode == null || operation.Elements == null) continue;
 
-            RebuildOperationVisuals();
+                bool cornerLetters = operation is DinoLino.Utilities.Operations.GetAngleOperation;
+
+                foreach (var element in operation.Elements)
+                {
+                    if (element is System.Windows.Shapes.Shape shape)
+                    {
+                        // A marker dot is filled and has no outline; everything else is
+                        // a stroke.
+                        if (shape.Stroke != null)
+                        {
+                            shape.Stroke = mode.LineColor;
+                            shape.StrokeThickness = mode.LineThickness;
+                        }
+                        else if (shape.Fill != null)
+                        {
+                            shape.Fill = mode.LineColor;
+                        }
+                    }
+                    else if (element is TextBlock text)
+                    {
+                        text.Foreground = mode.LineColor;
+
+                        // A triangle's corner letters follow Settings ▸ Font; other
+                        // marks keep the size they were drawn at.
+                        if (cornerLetters)
+                        {
+                            text.FontSize = mode.LabelFontSize;
+                            if (mode.LabelFont != null) text.FontFamily = mode.LabelFont;
+                        }
+                    }
+                }
+            }
         }
 
         // =====================

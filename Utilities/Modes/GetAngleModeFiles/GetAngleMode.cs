@@ -324,9 +324,11 @@ namespace DinoLino.Utilities.Modes
                     output.Add(bc);
                     output.Add(ca);
 
-                    var labelA = MakeLabel("A", PointA);
-                    var labelB = MakeLabel("B", PointB);
-                    var labelC = MakeLabel("C", PointC);
+                    // The corner letters follow Settings ▸ Font, like the rest of the
+                    // writing on screen.
+                    var labelA = MakeLabel("A", PointA, LabelFontSize, font: LabelFont);
+                    var labelB = MakeLabel("B", PointB, LabelFontSize, font: LabelFont);
+                    var labelC = MakeLabel("C", PointC, LabelFontSize, font: LabelFont);
 
                     output.Add(labelA);
                     output.Add(labelB);

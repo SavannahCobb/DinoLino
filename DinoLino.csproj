@@ -15,6 +15,7 @@
     <WarningLevel>4</WarningLevel>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TargetFrameworkProfile />
+    <IsWebBootstrapper>true</IsWebBootstrapper>
     <PublishUrl>C:\Users\savan\Documents\GitHub\DinoLino\DinoLino installation\</PublishUrl>
     <Install>true</Install>
     <InstallFrom>Web</InstallFrom>
@@ -28,9 +29,8 @@
     <InstallUrl>https://github.com/SavannahCobb/DinoLino/</InstallUrl>
     <CreateWebPageOnPublish>true</CreateWebPageOnPublish>
     <WebPage>publish.htm</WebPage>
-    <ApplicationRevision>0</ApplicationRevision>
+    <ApplicationRevision>1</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <IsWebBootstrapper>true</IsWebBootstrapper>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
     <BootstrapperEnabled>true</BootstrapperEnabled>
@@ -106,6 +106,7 @@
     <Compile Include="Utilities\Directory\MainWindow.Directory.cs" />
     <Compile Include="Utilities\Directory\Plot.Exporter.cs" />
     <Compile Include="Utilities\Directory\PlotAdvancedWindow.cs" />
+    <Compile Include="Utilities\HelpMenuFiles\AppLog.cs" />
     <Compile Include="Utilities\HelpMenuFiles\UpdateChecker.cs" />
     <Compile Include="Utilities\Image Calibration\AlignWindow.xaml.cs">
       <DependentUpon>AlignWindow.xaml</DependentUpon>

@@ -27,6 +27,11 @@ namespace DinoLino.Utilities.Modes
         /// <summary>True when the mode is ready to begin a new operation.</summary>
         public virtual bool IsStartingNewOperation => CurrentStep == 0;
 
+        /// True while something has been begun and not yet finished: a triangle with
+        /// one corner placed, a line with one end down. Undo and redo wait for it, since
+        /// they act on finished operations and would leave the half-made one stranded.
+        public virtual bool HasUnfinishedOperation => !IsStartingNewOperation;
+
         /// True for probe-style interactions that inspect or adjust an existing
         /// operation instead of starting a new one.
         public virtual bool IsProbeInteraction => false;
@@ -181,6 +186,21 @@ namespace DinoLino.Utilities.Modes
             _elementsToRemove.Clear();
         }
 
+        /// Gives up the operation part way through and returns everything it had put on
+        /// the canvas, for the caller to take off: the points and lines placed so far,
+        /// and any preview already queued for removal. Nothing is committed, and the
+        /// mode is left ready to begin again with the next click.
+        public virtual List<UIElement> AbandonUnfinishedOperation()
+        {
+            var drawn = new List<UIElement>(CurrentOperation);
+            drawn.AddRange(_elementsToRemove);
+
+            ClearElementsToRemove();
+            ResetDrawingState();
+
+            return drawn;
+        }
+
         protected Line MakeLine(Vector2 a, Vector2 b) => new()
         {
             Stroke = LineColor,
@@ -191,9 +211,19 @@ namespace DinoLino.Utilities.Modes
             Y2 = b.Y,
         };
 
+        /// <summary>Size the Settings ▸ Font window starts at.</summary>
+        public const double DefaultLabelFontSize = 14;
+
+        /// Typeface and size set under Settings ▸ Font, handed to every mode by the main
+        /// window. Labels that follow the setting are written in these.
+        public FontFamily LabelFont { get; set; } = new FontFamily("Arial");
+
+        public double LabelFontSize { get; set; } = DefaultLabelFontSize;
+
         /// Bold canvas label in the current line color, offset from the given point.
+        /// Written in the given typeface, or the canvas's own when none is given.
         protected TextBlock MakeLabel(string text, Vector2 pos, double fontSize = 28,
-            double offsetX = 5, double offsetY = 5)
+            double offsetX = 5, double offsetY = 5, FontFamily font = null)
         {
             var label = new TextBlock
             {
@@ -203,6 +233,8 @@ namespace DinoLino.Utilities.Modes
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center
             };
+
+            if (font != null) label.FontFamily = font;
 
             Canvas.SetLeft(label, pos.X + offsetX);
             Canvas.SetTop(label, pos.Y + offsetY);

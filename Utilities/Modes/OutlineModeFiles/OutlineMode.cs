@@ -25,6 +25,11 @@ namespace DinoLino.Utilities.Modes
         public override UserControl CreateControlPanel() => _cachedPanel ??= new OutlineControlPanel(this);
         public override bool IsStartingNewOperation => true;
 
+        // An outline is open while its dashed preview is waiting to be confirmed, or
+        // while a hand-drawn stroke is still being drawn.
+        public override bool HasUnfinishedOperation =>
+            (_hasPending && _pendingPolyline != null) || HandDraw.IsStrokeOpen;
+
         // Edit/metadata clicks adjust the existing outline and return no new
         // elements, so the "new operation" workspace clear must NOT fire for them or
         // the click wipes the outline being edited.
@@ -507,6 +512,21 @@ namespace DinoLino.Utilities.Modes
         {
             base.CancelCurrentOperation();
             HandDraw?.Cancel();
+        }
+
+        // An unconfirmed outline is its dashed preview, or a hand-drawn stroke still
+        // open. The preview is handed back to be taken off the canvas; the stroke
+        // removes its own as it is cancelled.
+        public override List<UIElement> AbandonUnfinishedOperation()
+        {
+            var drawn = new List<UIElement>();
+
+            if (_pendingPolyline != null) drawn.Add(_pendingPolyline);
+
+            ClearPendingState();
+            HandDraw?.Cancel();
+
+            return drawn;
         }
 
         // Drops all multi-click pending state.
