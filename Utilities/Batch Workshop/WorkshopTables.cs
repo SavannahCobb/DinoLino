@@ -836,8 +836,9 @@ namespace DinoLino.Utilities
                             {
                                 Col("axis_angle", o =>
                                     GeomOpHistoryWindow.Fmt(((AxisAngleOperation)o).AxisAngleDegrees)),
-                                Col("spec_aligned", o =>
-                                    ((AxisAngleOperation)o).MeasuredAgainstAxis ? "yes" : "no")
+                                // Yes when the specimen is aligned and no when it is
+                                // not, whatever was so when the angle was measured.
+                                Col("spec_aligned", o => scales.CurrentAligned ? "yes" : "no")
                             }
                         }
                     };
@@ -865,10 +866,9 @@ namespace DinoLino.Utilities
                                 Col("line_ratio",  o => GeomOpHistoryWindow.FmtRatio(((LineOperation)o).LineLengthRatio)),
                                 Col("line_angle",  o => GeomOpHistoryWindow.FmtRatio(((LineOperation)o).LineAngle)),
 
-                                // X and Y distance are taken on the specimen's axes
-                                // when it has them and on the image's when it does
-                                // not, so a table of lines has to say which it was.
-                                Col("spec_aligned", o => ((LineOperation)o).MeasuredAgainstAxis ? "yes" : "no")
+                                // Yes when the specimen is aligned and no when it is
+                                // not, whatever was so when the line was drawn.
+                                Col("spec_aligned", o => scales.CurrentAligned ? "yes" : "no")
                             }
                         }
                     };

@@ -300,8 +300,29 @@ namespace DinoLino.Utilities
         /// they are called from nowhere else, which is what makes one slot enough.
         public ScaleState Current { get; private set; }
 
+        /// Whether the specimen whose cells are now being filled has an alignment set.
+        /// Read from the specimen as it stands, exactly as its calibration is.
+        public bool CurrentAligned { get; private set; }
+
+        /// True when the specimen has an alignment. A null record is the specimen on
+        /// screen, whose live alignment is the one to read.
+        public bool AlignedFor(SpecimenRecord record)
+        {
+            if (record == null) return ActiveAlignment.Current.IsAligned;
+            if (_specimens == null) return false;
+
+            var owner = _specimens.Specimens
+                .FirstOrDefault(s => s != null && s.Ordinal == record.Ordinal);
+
+            return owner != null && owner.Alignment.IsSet;
+        }
+
         /// <summary>Points this at the block about to be filled.</summary>
-        public void Select(SpecimenRecord record) => Current = For(record);
+        public void Select(SpecimenRecord record)
+        {
+            Current = For(record);
+            CurrentAligned = AlignedFor(record);
+        }
     }
 
     /// <summary>What to do about a specimen that already has a measured scale.</summary>
