@@ -12,7 +12,7 @@
         <StackPanel>
             <Grid>
                 <Label Content="DinoLino" HorizontalAlignment="Left" FontWeight="Bold" FontSize="30" VerticalContentAlignment="Bottom"/>
-                <Label Content="V 2.0.0" HorizontalAlignment="Right" VerticalContentAlignment="Bottom" HorizontalContentAlignment="Right"/>
+                <Label Content="V 2.0.0.2" HorizontalAlignment="Right" VerticalContentAlignment="Bottom" HorizontalContentAlignment="Right"/>
             </Grid>
             <Line x:Name="line" Stroke="#FF585858" X2="{Binding ActualWidth, ElementName=line, Mode=OneWay}" />
             <Grid>
