@@ -30,7 +30,7 @@
     <CreateWebPageOnPublish>true</CreateWebPageOnPublish>
     <WebPage>publish.htm</WebPage>
     <ApplicationRevision>1</ApplicationRevision>
-    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
+    <ApplicationVersion>2.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
     <BootstrapperEnabled>true</BootstrapperEnabled>
@@ -62,12 +62,12 @@
     </ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- ClickOnce stages a publish in a folder it empties first, which by default sits
-         under the project's own bin. A file-syncing client holds open the files it is
-         uploading, and the emptying then fails and stops the build. Staging under the
-         machine's own local application data keeps that folder out of reach of anything
-         that syncs, and the built program still lands in bin as before. -->
-    <PublishDir>$(LOCALAPPDATA)\DinoLino\app.publish\</PublishDir>
+    <!-- PublishDir is left at its default, bin\<configuration>\app.publish\. Visual
+         Studio's Publish command copies the staged files from that folder whatever this
+         property says, so staging anywhere else leaves it looking for an
+         "Application Files" folder that was written somewhere it does not read. A
+         staging folder that will not empty is dealt with by the CleanPublishFolder
+         target at the end of this file. -->
     <GenerateManifests>true</GenerateManifests>
     <!-- The signing certificate holds a private key and is kept out of the repository, so
          a machine without it would otherwise fail to build rather than fail to publish.
