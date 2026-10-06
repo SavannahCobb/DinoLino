@@ -62,15 +62,23 @@
     </ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestCertificateThumbprint>A59C57EBD0AE3E71F890D99E60003FD5D77F846E</ManifestCertificateThumbprint>
-  </PropertyGroup>
-  <PropertyGroup>
-    <ManifestKeyFile>DinoLino_TemporaryKey.pfx</ManifestKeyFile>
-  </PropertyGroup>
-  <PropertyGroup>
+    <!-- ClickOnce stages a publish in a folder it empties first, which by default sits
+         under the project's own bin. A file-syncing client holds open the files it is
+         uploading, and the emptying then fails and stops the build. Staging under the
+         machine's own local application data keeps that folder out of reach of anything
+         that syncs, and the built program still lands in bin as before. -->
+    <PublishDir>$(LOCALAPPDATA)\DinoLino\app.publish\</PublishDir>
     <GenerateManifests>true</GenerateManifests>
+    <!-- The signing certificate holds a private key and is kept out of the repository, so
+         a machine without it would otherwise fail to build rather than fail to publish.
+         Signing is therefore switched on only where the certificate is actually present,
+         beside this file; everywhere else the build and the debugger run unsigned. To
+         publish from a machine, copy DinoLino_TemporaryKey.pfx into the project folder. -->
+    <SignManifests>false</SignManifests>
   </PropertyGroup>
-  <PropertyGroup>
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\DinoLino_TemporaryKey.pfx')">
+    <ManifestCertificateThumbprint>A59C57EBD0AE3E71F890D99E60003FD5D77F846E</ManifestCertificateThumbprint>
+    <ManifestKeyFile>DinoLino_TemporaryKey.pfx</ManifestKeyFile>
     <SignManifests>true</SignManifests>
   </PropertyGroup>
   <ItemGroup>
@@ -280,7 +288,7 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
-    <None Include="DinoLino_TemporaryKey.pfx" />
+    <None Include="DinoLino_TemporaryKey.pfx" Condition="Exists('DinoLino_TemporaryKey.pfx')" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -339,6 +347,13 @@
     </Content>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Replaces the imported target of the same name. Emptying the staging folder is
+       housekeeping before a publish, so a folder that will not delete is worth a warning
+       and not worth refusing to build over. Declared after the import, which is what
+       makes this definition the one that runs. -->
+  <Target Name="CleanPublishFolder">
+    <RemoveDir Directories="$(PublishDir)" ContinueOnError="true" Condition="Exists('$(PublishDir)')" />
+  </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

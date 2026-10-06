@@ -257,6 +257,61 @@ namespace DinoLino.Utilities
     }
 
     /// <summary>
+    /// The units a scale may be measured in, and the arithmetic for reading a
+    /// measurement in a different one.
+    /// </summary>
+    public static class ScaleUnits
+    {
+        /// What Tools, Scale, Set Scale offers, largest first, each with the power of
+        /// ten it stands at against the metre. Every one is a power of ten, so moving a
+        /// reading between them shifts the exponent instead of looking up a ratio.
+        private static readonly string[] Names =
+        {
+            "km", "hm", "dam", "m", "dm", "cm", "mm", "µm", "nm"
+        };
+
+        private static readonly int[] Powers = { 3, 2, 1, 0, -1, -2, -3, -6, -9 };
+
+        private static readonly IReadOnlyList<string> Ladder = Array.AsReadOnly(Names);
+
+        /// <summary>Image pixels: what an uncalibrated specimen is measured in.</summary>
+        public const string Pixels = "px";
+
+        /// <summary>The units in ladder order, largest first.</summary>
+        public static IReadOnlyList<string> All => Ladder;
+
+        /// <summary>Whether this is a unit the ladder can convert.</summary>
+        public static bool IsKnown(string unit) => PowerOf(unit) != null;
+
+        /// How many of the second unit one of the first makes: 1 mm is 0.1 cm, so from
+        /// mm to cm the factor is 0.1. Zero when either name is off the ladder, which a
+        /// caller reads as the two being incomparable rather than as a ratio of nothing.
+        public static double Factor(string from, string to)
+        {
+            int? fromPower = PowerOf(from);
+            int? toPower = PowerOf(to);
+
+            if (fromPower == null || toPower == null) return 0;
+
+            return Math.Pow(10, fromPower.Value - toPower.Value);
+        }
+
+        /// The power of ten this unit stands at against the metre, or null when the
+        /// ladder does not have it.
+        public static int? PowerOf(string unit)
+        {
+            if (string.IsNullOrEmpty(unit)) return null;
+
+            for (int i = 0; i < Names.Length; i++)
+            {
+                if (string.Equals(Names[i], unit, StringComparison.Ordinal)) return Powers[i];
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Which calibration a table's cells are to be read with, specimen by specimen.
     /// </summary>
     /// <remarks>
@@ -495,16 +550,6 @@ namespace DinoLino
         // worked out per division rather than fixed.
         private const double ScaleBarDigitWidth = 6.5;
         private const double ScaleBarLabelGap = 5.0;
-
-        // The units Tools, Scale, Set Scale offers, largest first, each with the power
-        // of ten it stands at against the metre. Every one is a power of ten, so moving
-        // a reading between them shifts the exponent instead of looking up a ratio.
-        private static readonly string[] ScaleBarUnitNames =
-        {
-            "km", "hm", "dam", "m", "dm", "cm", "mm", "µm", "nm"
-        };
-
-        private static readonly int[] ScaleBarUnitPowers = { 3, 2, 1, 0, -1, -2, -3, -6, -9 };
 
         // What one division may count, times a power of ten. Ten of a unit is as often
         // far wider than the view as it is too small to see, so the division carries
@@ -764,28 +809,8 @@ namespace DinoLino
 
         // How many of the calibration's units one of the named units makes. Zero when
         // either name is off the ladder.
-        private static double ScaleBarUnitFactor(string from, string to)
-        {
-            int? fromPower = ScaleBarPowerOf(from);
-            int? toPower = ScaleBarPowerOf(to);
-
-            if (fromPower == null || toPower == null) return 0;
-
-            return Math.Pow(10, fromPower.Value - toPower.Value);
-        }
-
-        private static int? ScaleBarPowerOf(string unit)
-        {
-            if (string.IsNullOrEmpty(unit)) return null;
-
-            for (int i = 0; i < ScaleBarUnitNames.Length; i++)
-            {
-                if (string.Equals(ScaleBarUnitNames[i], unit, StringComparison.Ordinal))
-                    return ScaleBarUnitPowers[i];
-            }
-
-            return null;
-        }
+        private static double ScaleBarUnitFactor(string from, string to) =>
+            ScaleUnits.Factor(from, to);
 
         /// The unit and division the bar is drawn in. Unzoomed it reads in the unit the
         /// specimen was scaled in, which is the reading that was asked for and the one
@@ -838,7 +863,7 @@ namespace DinoLino
             // Largest unit first, so of two readings of the same length the one whose
             // division counts fewest units wins: naming the same bar 0 to 10 cm rather
             // than 0 to 100 mm is what moves the unit as the view is zoomed.
-            foreach (string candidate in ScaleBarUnitNames)
+            foreach (string candidate in ScaleUnits.All)
             {
                 double perUnit = ScaleBarPixelsPerUnit(candidate);
                 if (!ChooseScaleBarStep(perUnit, true, null, out double candidateStep)) continue;

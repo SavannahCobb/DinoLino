@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using ShapeConstraint = DinoLino.Utilities.Modes.DrawMode.ShapeConstraint;
 
 namespace DinoLino.Utilities
@@ -138,6 +139,24 @@ namespace DinoLino.Utilities
 
             return null;
         }
+    }
+
+    /// <summary>Column names that mean the same thing wherever they appear.</summary>
+    public static class WellKnownColumns
+    {
+        /// <summary>
+        /// Whether the specimen has an alignment set. It is a property of the specimen
+        /// and not of anything measured on it, so it holds one value for a specimen
+        /// however many tools were used and whatever was drawn with them.
+        /// </summary>
+        /// <remarks>
+        /// The wide tables carry it inside the groups that read it, which is where it
+        /// has to be read from. A file is a different matter: there it belongs beside
+        /// the specimen's name and its groups, written once, and never under a mode --
+        /// one column headed spec_aligned and not an axis_angle_ and a line_ copy of
+        /// the same yes or no.
+        /// </remarks>
+        public const string Aligned = "spec_aligned";
     }
 
     /// <summary>
@@ -352,6 +371,7 @@ namespace DinoLino.Utilities
         {
             var headers = new List<string> { "Specimen" };
             headers.AddRange(SpecimenGroups.Columns);
+            headers.Add(WellKnownColumns.Aligned);
             headers.Add("Replicate");
             headers.Add("Operation");
             headers.Add("Variable");
@@ -370,8 +390,13 @@ namespace DinoLino.Utilities
         /// measurement was not taken, which its absence already says, and these tables
         /// are mostly blank — one attempt rarely uses every tool of a mode. Hidden
         /// columns are left out too, the same as in the wide shape.
+        ///
+        /// The specimen's alignment is one of the identifying columns rather than a
+        /// variable, since it is the specimen's and not any tool's. As a variable it
+        /// would be reported once under every tool that happens to read it, the same
+        /// yes or no over and over, attributed to modes it has nothing to do with.
         /// </summary>
-        public void AppendLongRows(List<string[]> into, int blockIndex)
+        public void AppendLongRows(List<string[]> into, int blockIndex, ScaleSource scales)
         {
             if (into == null || blockIndex < 0 || blockIndex >= Blocks.Count) return;
 
@@ -379,22 +404,26 @@ namespace DinoLino.Utilities
             var groupValues = SpecimenGroups.ValuesFor(block.Name);
             int groupCount = SpecimenGroups.Columns.Count;
             var keep = VisibleColumnIndexes();
+            string aligned = Aligned(block, scales);
 
             foreach (var row in block.Rows)
             {
                 foreach (int column in keep)
                 {
+                    if (IsAlignedColumn(column)) continue;
+
                     string cell = row.Cells[column];
                     if (string.IsNullOrWhiteSpace(cell)) continue;
 
                     string value, unit;
-                    LongValue(cell, out value, out unit);
+                    ReadCell(cell, out value, out unit);
 
-                    var cells = new string[groupCount + 6];
+                    var cells = new string[groupCount + 7];
                     int i = 0;
 
                     cells[i++] = block.Name;
                     for (int g = 0; g < groupCount; g++) cells[i++] = groupValues[g];
+                    cells[i++] = aligned;
                     cells[i++] = row.Attempt > 0 ? row.Attempt.ToString() : "";
                     cells[i++] = OperationOf(column);
                     cells[i++] = MeasurementHeaders[column];
@@ -405,6 +434,31 @@ namespace DinoLino.Utilities
                 }
             }
         }
+
+        /// <summary>
+        /// Whether one specimen has an alignment, read from the specimen rather than
+        /// from a cell, so it is answered for a specimen measured only with tools that
+        /// never read it. A specimen with no measurement at all has no row in the long
+        /// shape to carry it, and is answered in the per-specimen shape, which holds a
+        /// row for every specimen whether anything was measured on it or not.
+        /// </summary>
+        public static string Aligned(WorkshopBlock block, ScaleSource scales)
+        {
+            if (block == null || scales == null) return "";
+
+            return scales.AlignedFor(block.Record) ? "yes" : "no";
+        }
+
+        /// Whether this column is the alignment flag a group contributed, which a file
+        /// writes once of the specimen instead of once per tool that reads it. A column
+        /// the user calculated is theirs whatever they called it, so the test is of the
+        /// columns the groups filled and not of the formula columns appended after them.
+        public bool IsAlignedColumn(int column) =>
+            MeasurementHeaders != null
+            && ColumnOperations != null
+            && column < ColumnOperations.Length
+            && string.Equals(MeasurementHeaders[column], WellKnownColumns.Aligned,
+                             StringComparison.OrdinalIgnoreCase);
 
         // The operation a column came from. A formula column is appended after the ones
         // the groups contributed, so it falls past the end of the array and belongs to
@@ -432,7 +486,7 @@ namespace DinoLino.Utilities
                 : "Formula";
 
         /// <summary>
-        /// One wide cell as a long row's Value and Unit. Value is kept a number in every
+        /// One wide cell read back as a number and a unit. Value is kept a number in every
         /// row, because one piece of text anywhere in the column makes the whole column
         /// text in R and an object column in pandas, and a plot drawn against it then
         /// fails or sorts the numbers as words.
@@ -444,7 +498,7 @@ namespace DinoLino.Utilities
         /// empty labelled error, so the row still says a value was expected here and the
         /// column can be found with a search.
         /// </remarks>
-        private static void LongValue(string cell, out string value, out string unit)
+        public static void ReadCell(string cell, out string value, out string unit)
         {
             if (cell == "yes" || cell == "no")
             {
@@ -497,6 +551,597 @@ namespace DinoLino.Utilities
         /// <summary>True when no specimen contributed an actual measurement.</summary>
         public bool IsEmpty =>
             Blocks.All(b => b.Rows.All(r => r.Operations.Count == 0));
+    }
+
+    /// <summary>
+    /// Every mode's variables for one specimen on one row. This is the shape a package
+    /// wanting one row per specimen reads -- geomorph's data frame, Momocs' coe and fac
+    /// -- which a table of one row per attempt is not.
+    /// </summary>
+    /// <remarks>
+    /// A variable's replicates are averaged, and how many attempts of each operation the
+    /// specimen has is a column of its own, so the mean of one attempt cannot be mistaken
+    /// for the mean of five.
+    ///
+    /// Lengths and areas are all written in one unit, because a column heading can name
+    /// only one and a column of millimetres for one specimen and centimetres for another
+    /// is a wrong number rather than a wrong label. The conversion is done on the number
+    /// read out of the cell, not on the calibration behind it, so a reading already
+    /// rounded for display in its own unit keeps every digit it had.
+    /// </remarks>
+    public static class SpecimenWideTable
+    {
+        /// <summary>
+        /// The real units these tables' lengths and areas are written in, the one the
+        /// most specimens use first, so a picker opens on the one that converts the
+        /// fewest readings.
+        /// </summary>
+        /// <remarks>
+        /// Image pixels are not among them. They are the absence of a calibration rather
+        /// than a unit, and nothing converts between them and a real unit, so offering
+        /// them beside millimetres would offer a file that silently blanks every
+        /// specimen that does have a scale. An empty list is a session with no scale
+        /// anywhere, which is written in image pixels because there is nothing else to
+        /// write it in.
+        /// </remarks>
+        public static List<string> UnitsIn(IReadOnlyList<WorkshopTable> tables)
+        {
+            // Specimens rather than cells: a unit is a property of a calibration, and
+            // one specimen measured forty times should not outvote twenty specimens
+            // measured once.
+            var users = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+            foreach (var table in Tables(tables))
+            {
+                var dimensional = DimensionalColumns(table);
+
+                foreach (var block in table.Blocks)
+                {
+                    foreach (var row in block.Rows)
+                    {
+                        foreach (int index in dimensional.Keys)
+                        {
+                            string unit = BareUnitOf(row, index);
+                            if (unit == null || unit == ScaleUnits.Pixels) continue;
+
+                            HashSet<string> names;
+                            if (!users.TryGetValue(unit, out names))
+                                users[unit] = names = new HashSet<string>(StringComparer.Ordinal);
+
+                            names.Add(block.Name ?? "");
+                        }
+                    }
+                }
+            }
+
+            // Ties go to the finer unit, which holds more digits of a reading that was
+            // rounded for display.
+            return users.Keys
+                .OrderByDescending(u => users[u].Count)
+                .ThenByDescending(LadderIndex)
+                .ToList();
+        }
+
+        private static int LadderIndex(string unit)
+        {
+            for (int i = 0; i < ScaleUnits.All.Count; i++)
+            {
+                if (string.Equals(ScaleUnits.All[i], unit, StringComparison.Ordinal)) return i;
+            }
+
+            return int.MinValue;
+        }
+
+        /// How many specimens hold a length or an area with no calibration behind it.
+        /// Those readings are in image pixels, which no real unit converts to, so a file
+        /// written in one leaves them blank.
+        public static int UncalibratedCount(IReadOnlyList<WorkshopTable> tables)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var table in Tables(tables))
+            {
+                var dimensional = DimensionalColumns(table);
+
+                foreach (var block in table.Blocks)
+                {
+                    foreach (var row in block.Rows)
+                    {
+                        foreach (int index in dimensional.Keys)
+                        {
+                            if (BareUnitOf(row, index) == ScaleUnits.Pixels)
+                                names.Add(block.Name ?? "");
+                        }
+                    }
+                }
+            }
+
+            return names.Count;
+        }
+
+        /// <summary>How many of these columns were calculated from a formula.</summary>
+        public static int FormulaColumnCount(IReadOnlyList<WorkshopTable> tables) =>
+            Columns(tables).Count(c => IsFormula(c.Operation));
+
+        /// Whether a column was calculated rather than measured. A formula is evaluated
+        /// over the numbers in a row and writes a bare number, so nothing survives in the
+        /// cell to say what the result is in.
+        private static bool IsFormula(string operation) =>
+            operation != null && operation.StartsWith("Formula", StringComparison.Ordinal);
+
+        /// <summary>
+        /// One row per specimen, with every length and area given in the unit asked for.
+        /// A reading no conversion reaches that unit from -- an image-pixel count, when
+        /// the file is in millimetres -- is left blank; the specimen's ratios, angles and
+        /// counts are there as usual.
+        /// </summary>
+        /// <remarks>
+        /// Only what was measured is in the file. The tables define a column for every
+        /// variable of every mode whether or not a session used the tool, which is right
+        /// on screen, where a column standing empty says plainly that nothing was drawn
+        /// with it. Here it is not: a file of a hundred headings over blanks is the one
+        /// thing a reader has to clean before it can be used at all.
+        /// </remarks>
+        /// <remarks>
+        /// Formula columns are left out when more than one unit had to be converted,
+        /// which is the one case where they cannot be trusted. A formula writes a bare
+        /// number, so a column calculated from a length holds one specimen's millimetres
+        /// beside another's centimetres with nothing in the cell to tell them apart, and
+        /// no column heading could name a unit for it. The measured variables it was
+        /// calculated from are all in the file, and in one unit, so the formula can be
+        /// taken again over those.
+        /// </remarks>
+        public static (string[] Headers, List<string[]> Rows) Build(
+            IReadOnlyList<WorkshopTable> tables, string targetUnit, bool keepFormulaColumns,
+            ScaleSource scales)
+        {
+            var columns = Columns(tables);
+
+            if (!keepFormulaColumns)
+                columns = columns.Where(c => !IsFormula(c.Operation)).ToList();
+
+            if (columns.Count == 0) return (new string[0], new List<string[]>());
+
+            // The longest walk of history any of the tables made. They are all built from
+            // the same walk, so this is the specimen count; taking the longest rather
+            // than the first means a table built some other way can only leave rows out,
+            // never label one specimen's values with another's name.
+            int specimens = Tables(tables).Max(t => t.Blocks.Count);
+
+            // Every value first, so a column that turns out to hold nothing can be left
+            // out rather than written as a heading above nothing, and so no value is
+            // calculated twice.
+            var operations = Operations(columns);
+            var counts = operations
+                .Select(o => Column(specimens, specimen => Replicates(o, specimen)))
+                .ToList();
+            var values = columns
+                .Select(c => Column(specimens, specimen => Reduce(c, specimen, targetUnit)))
+                .ToList();
+
+            // An operation nobody used contributes neither its variables nor its count:
+            // a session of circular arcs alone has no parabolic arc to report, and a
+            // heading over a column of blanks is worse than no heading, since a reader
+            // cannot tell a tool that measured nothing from a tool never picked up.
+            var used = new HashSet<OperationRef>(
+                operations.Where((o, i) => counts[i].Any(n => n > 0)));
+
+            // A variable of a used operation can still be empty throughout: a harmonic
+            // deeper than any outline reached, a ratio the geometry leaves undefined, a
+            // length no conversion reaches this file's unit from.
+            var keptColumns = Enumerable.Range(0, columns.Count)
+                .Where(i => used.Contains(columns[i].Owner)
+                            && values[i].Any(v => v.Length > 0))
+                .ToList();
+
+            // A count is kept only where a variable of its operation is. Three circles
+            // drawn on an uncalibrated specimen are three readings taken, but if their
+            // area is the only thing a circle has and no conversion reaches this file's
+            // unit from image pixels, a circle_n of 3 would stand over nothing.
+            var measured = new HashSet<OperationRef>(keptColumns.Select(i => columns[i].Owner));
+
+            var keptOperations = Enumerable.Range(0, operations.Count)
+                .Where(i => measured.Contains(operations[i]))
+                .ToList();
+
+            // Read from what is being kept, so the one remaining measurer of a variable
+            // two operations share is named plainly rather than prefixed against nothing.
+            var shared = new HashSet<string>(
+                keptColumns.Select(i => columns[i])
+                           .GroupBy(c => c.Variable, StringComparer.Ordinal)
+                           .Where(g => g.Select(c => c.Operation).Distinct(StringComparer.Ordinal).Count() > 1)
+                           .Select(g => g.Key),
+                StringComparer.Ordinal);
+
+            var headers = new List<string> { "Specimen" };
+            headers.AddRange(SpecimenGroups.Columns);
+            headers.Add(Distinct(headers, WellKnownColumns.Aligned));
+
+            foreach (int i in keptOperations)
+                headers.Add(Distinct(headers, Slug(operations[i].Name) + "_n"));
+
+            foreach (int i in keptColumns)
+            {
+                headers.Add(Distinct(headers,
+                    (shared.Contains(columns[i].Variable) ? Slug(columns[i].Operation) + "_" : "")
+                    + columns[i].Variable
+                    + Suffix(columns[i], targetUnit)));
+            }
+
+            int groupCount = SpecimenGroups.Columns.Count;
+            var rows = new List<string[]>();
+
+            for (int specimen = 0; specimen < specimens; specimen++)
+            {
+                var block = BlockOf(tables, specimen);
+                string name = block == null ? "" : block.Name;
+                var groupValues = SpecimenGroups.ValuesFor(name);
+                var cells = new string[headers.Count];
+                int c = 0;
+
+                cells[c++] = name;
+                for (int g = 0; g < groupCount; g++) cells[c++] = groupValues[g];
+                cells[c++] = WorkshopTable.Aligned(block, scales);
+
+                foreach (int i in keptOperations)
+                    cells[c++] = counts[i][specimen].ToString(CultureInfo.InvariantCulture);
+
+                foreach (int i in keptColumns) cells[c++] = values[i][specimen];
+
+                rows.Add(cells);
+            }
+
+            return (headers.ToArray(), rows);
+        }
+
+        // One column of the file, filled a specimen at a time.
+        private static T[] Column<T>(int specimens, Func<int, T> value)
+        {
+            var filled = new T[specimens];
+
+            for (int specimen = 0; specimen < specimens; specimen++) filled[specimen] = value(specimen);
+
+            return filled;
+        }
+
+        // A heading no earlier column has taken. Names are mostly the tables' own and
+        // cannot collide, but a variable of the user's own could be called line_n, which
+        // is also what the count beside the Line operation is called. Two columns under
+        // one heading would leave a reader silently holding the wrong one, since R and
+        // pandas both rename the second rather than refuse the file.
+        private static string Distinct(List<string> taken, string header)
+        {
+            if (!taken.Contains(header)) return header;
+
+            for (int n = 2; ; n++)
+            {
+                string candidate = header + "_" + n.ToString(CultureInfo.InvariantCulture);
+                if (!taken.Contains(candidate)) return candidate;
+            }
+        }
+
+        // One column of one mode's table, kept with the operation it came from so the
+        // flat row can still say which tool measured what, and with the dimension its
+        // cells carry so a heading can name the unit and a mean can be converted.
+        private sealed class ColumnRef
+        {
+            public WorkshopTable Table;
+            public int Index;
+            public string Operation;
+            public string Variable;
+
+            /// The operation this column belongs to, rather than only its name: two
+            /// modes may name an operation alike, and attempts of one are not attempts
+            /// of the other.
+            public OperationRef Owner;
+
+            /// 1 for a length, 2 for an area, 0 for a reading with no unit at all: the
+            /// power a conversion factor is raised to.
+            public int Dimension;
+        }
+
+        // One operation and the columns it contributed, so a replicate count is taken
+        // once per operation rather than once per column.
+        private sealed class OperationRef
+        {
+            public string Name;
+            public WorkshopTable Table;
+            public List<int> Indexes = new List<int>();
+        }
+
+        private static IEnumerable<WorkshopTable> Tables(IReadOnlyList<WorkshopTable> tables) =>
+            (tables ?? new List<WorkshopTable>())
+                .Where(t => t != null && t.MeasurementHeaders != null);
+
+        // Every visible column of every mode, in table and group order. Hidden columns
+        // are left out here, the same as in every other export.
+        private static List<ColumnRef> Columns(IReadOnlyList<WorkshopTable> tables)
+        {
+            var columns = new List<ColumnRef>();
+
+            foreach (var table in Tables(tables))
+            {
+                var dimensional = DimensionalColumns(table);
+
+                foreach (int index in table.VisibleColumnIndexes())
+                {
+                    // Written once of the specimen, beside its name and its groups, so
+                    // it is not among the variables any tool contributes.
+                    if (table.IsAlignedColumn(index)) continue;
+
+                    int dimension;
+
+                    columns.Add(new ColumnRef
+                    {
+                        Table = table,
+                        Index = index,
+                        Operation = OperationOf(table, index),
+                        Variable = table.MeasurementHeaders[index],
+                        Dimension = dimensional.TryGetValue(index, out dimension) ? dimension : 0
+                    });
+                }
+            }
+
+            return columns;
+        }
+
+        // Which of a table's columns carry a unit, and whether it is a length or an area.
+        // Read from the cells rather than declared: a variable is one kind of quantity,
+        // so the first cell of a column that carries a unit settles the whole column.
+        // Walked once per table, since a table of hundreds of columns and hundreds of
+        // rows would otherwise be walked once for every column in it.
+        private static Dictionary<int, int> DimensionalColumns(WorkshopTable table)
+        {
+            var dimensions = new Dictionary<int, int>();
+            var settled = new HashSet<int>();
+            var candidates = table.VisibleColumnIndexes();
+
+            foreach (var block in table.Blocks)
+            {
+                foreach (var row in block.Rows)
+                {
+                    foreach (int index in candidates)
+                    {
+                        if (settled.Contains(index)) continue;
+                        if (index >= row.Cells.Length) continue;
+
+                        string cell = row.Cells[index];
+                        if (string.IsNullOrWhiteSpace(cell)) continue;
+
+                        string value, unit;
+                        WorkshopTable.ReadCell(cell, out value, out unit);
+
+                        // A cell with something in it but no unit settles the column as
+                        // dimensionless: every cell of one variable is the same quantity.
+                        settled.Add(index);
+
+                        if (BareUnit(unit) == null) continue;
+
+                        dimensions[index] = unit.IndexOf(Squared) >= 0 ? 2 : 1;
+                    }
+
+                    if (settled.Count == candidates.Count) return dimensions;
+                }
+            }
+
+            return dimensions;
+        }
+
+        private static string OperationOf(WorkshopTable table, int index) =>
+            table.ColumnOperations != null && index < table.ColumnOperations.Length
+                ? table.ColumnOperations[index] ?? ""
+                : "";
+
+        // The operations behind these columns, in the order they first appear, each with
+        // the columns that belong to it. An operation's columns all come from one mode's
+        // table, so the table is taken from the first of them.
+        private static List<OperationRef> Operations(IReadOnlyList<ColumnRef> columns)
+        {
+            var operations = new List<OperationRef>();
+
+            foreach (var column in columns)
+            {
+                // Found by table as well as by name. A handful of operations to scan, so
+                // the walk costs nothing a dictionary would save, and it cannot quietly
+                // file one mode's columns under another mode's operation.
+                var operation = operations.FirstOrDefault(
+                    o => ReferenceEquals(o.Table, column.Table)
+                         && string.Equals(o.Name, column.Operation, StringComparison.Ordinal));
+
+                if (operation == null)
+                {
+                    operation = new OperationRef { Name = column.Operation, Table = column.Table };
+                    operations.Add(operation);
+                }
+
+                operation.Indexes.Add(column.Index);
+                column.Owner = operation;
+            }
+
+            return operations;
+        }
+
+        /// How many attempts of one operation this specimen has: an attempt counts when
+        /// any of the operation's columns holds something. It is the number of readings
+        /// taken, which is not always the number averaged -- a length no conversion
+        /// reaches the file's unit from was still a reading taken, and is counted here
+        /// while its own cell stands empty. Where that leaves nothing of the operation
+        /// in the file at all, the count goes with it.
+        private static int Replicates(OperationRef operation, int specimen)
+        {
+            if (specimen >= operation.Table.Blocks.Count) return 0;
+
+            int count = 0;
+
+            foreach (var row in operation.Table.Blocks[specimen].Rows)
+            {
+                if (row.Attempt <= 0) continue;
+
+                foreach (int index in operation.Indexes)
+                {
+                    if (index >= row.Cells.Length) continue;
+                    if (string.IsNullOrWhiteSpace(row.Cells[index])) continue;
+
+                    count++;
+                    break;
+                }
+            }
+
+            return count;
+        }
+
+        /// One specimen's value for one column: the mean of its replicates, converted
+        /// into the file's unit and written with enough figures that the conversion
+        /// coarsens nothing. A flag is not a quantity, so it carries through when the
+        /// replicates agree and is blank when they disagree.
+        private static string Reduce(ColumnRef column, int specimen, string targetUnit)
+        {
+            if (specimen >= column.Table.Blocks.Count) return "";
+
+            double total = 0;
+            int n = 0;
+            string flag = null;
+            bool agree = true;
+
+            foreach (var row in column.Table.Blocks[specimen].Rows)
+            {
+                if (row.Attempt <= 0) continue;
+                if (column.Index >= row.Cells.Length) continue;
+
+                string cell = row.Cells[column.Index];
+                if (string.IsNullOrWhiteSpace(cell)) continue;
+
+                string value, unit;
+                WorkshopTable.ReadCell(cell, out value, out unit);
+                if (value.Length == 0) continue;
+
+                if (unit == Boolean)
+                {
+                    if (flag == null) flag = value;
+                    else if (flag != value) agree = false;
+
+                    continue;
+                }
+
+                double parsed;
+                if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed))
+                    continue;
+
+                if (column.Dimension > 0)
+                {
+                    double factor = ConversionFactor(BareUnit(unit), targetUnit, column.Dimension);
+
+                    // Nothing converts an image-pixel count into millimetres, so the
+                    // reading is left out rather than written as though it had been
+                    // measured against a scale.
+                    if (factor <= 0) continue;
+
+                    parsed *= factor;
+                }
+
+                total += parsed;
+                n++;
+            }
+
+            if (flag != null) return agree ? flag : "";
+            if (n == 0) return "";
+
+            // Nine significant figures, so a reading converted up or down the ladder
+            // keeps every digit it was given and gains no made-up ones.
+            return (total / n).ToString("G9", CultureInfo.InvariantCulture);
+        }
+
+        // How much to multiply a reading in one unit by to state it in another, raised to
+        // the power the quantity stands at: an area converts by the square of the factor
+        // a length does. Zero when the two units are not comparable.
+        private static double ConversionFactor(string from, string to, int dimension)
+        {
+            if (from == null || to == null) return 0;
+            if (string.Equals(from, to, StringComparison.Ordinal)) return 1;
+
+            double factor = ScaleUnits.Factor(from, to);
+
+            return factor <= 0 ? 0 : Math.Pow(factor, dimension);
+        }
+
+        // What the file's columns say they hold, where the quantity has a unit at all.
+        private static string Suffix(ColumnRef column, string targetUnit) =>
+            column.Dimension == 0
+                ? ""
+                : "_" + Sanitize(targetUnit) + (column.Dimension == 2 ? "2" : "");
+
+        private static string BareUnitOf(WorkshopRow row, int index)
+        {
+            if (index >= row.Cells.Length) return null;
+
+            string cell = row.Cells[index];
+            if (string.IsNullOrWhiteSpace(cell)) return null;
+
+            string value, unit;
+            WorkshopTable.ReadCell(cell, out value, out unit);
+
+            return BareUnit(unit);
+        }
+
+        // The length behind a cell's unit: mm for both mm and mm squared, px for image
+        // pixels. A dimensionless reading, a flag and a formula error have none.
+        private static string BareUnit(string unit)
+        {
+            if (string.IsNullOrEmpty(unit)) return null;
+
+            string bare = unit.TrimEnd(Squared);
+
+            return bare == ScaleUnits.Pixels || ScaleUnits.IsKnown(bare) ? bare : null;
+        }
+
+        // A unit as a column name may carry it: no superscript, and the micro sign
+        // written as a letter, since a heading is read by software entitled to plain
+        // ASCII.
+        private static string Sanitize(string unit) =>
+            (unit ?? "").Replace(MicroSign, "u").Replace(SquaredText, "2");
+
+        // An operation's name as part of a column name: lower case, an underscore where
+        // the name breaks, nothing else. Circular Arc becomes circular_arc and
+        // Formula (Curvature) becomes formula_curvature.
+        private static string Slug(string name)
+        {
+            var text = new StringBuilder();
+            bool gap = false;
+
+            foreach (char c in name ?? "")
+            {
+                if (!char.IsLetterOrDigit(c))
+                {
+                    gap = true;
+                    continue;
+                }
+
+                if (gap && text.Length > 0) text.Append('_');
+
+                gap = false;
+                text.Append(char.ToLowerInvariant(c));
+            }
+
+            return text.Length > 0 ? text.ToString() : "unnamed";
+        }
+
+        // The specimen at this position, from the first table that reaches it. Every
+        // table is built from the same walk of history, so they all name the same
+        // specimen at the same position.
+        private static WorkshopBlock BlockOf(IReadOnlyList<WorkshopTable> tables, int specimen)
+        {
+            foreach (var table in Tables(tables))
+            {
+                if (specimen < table.Blocks.Count) return table.Blocks[specimen];
+            }
+
+            return null;
+        }
+
+        private const char Squared = '²';
+        private const string SquaredText = "²";
+        private const string MicroSign = "µ";
+        private const string Boolean = "boolean";
     }
 
     // =====================

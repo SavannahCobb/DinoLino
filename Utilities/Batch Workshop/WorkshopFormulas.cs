@@ -175,6 +175,12 @@ namespace DinoLino.Utilities
                 return false;
             }
 
+            if (string.Equals(name, WellKnownColumns.Aligned, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "\"" + name + "\" is the specimen's own column.";
+                return false;
+            }
+
             if (SpecimenGroups.Columns.Contains(name, StringComparer.OrdinalIgnoreCase))
             {
                 error = "\"" + name + "\" is a group column.";

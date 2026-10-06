@@ -38,11 +38,26 @@ namespace DinoLino.Utilities
         // the list of variables keeps its place.
         private ContentControl _customData;
 
-        // Whether the footer exports one long CSV instead of a workbook. Static so the
-        // choice outlives one window, the way the staged sheets do: it is a way of working
-        // rather than a property of any one table. The per-tab Export to CSV buttons are
-        // unaffected — a single table read on its own is what the wide shape is good at.
-        private static bool _longCsv;
+        /// What the footer's button writes. Three shapes of the same measurements: a
+        /// workbook of the tables as they stand, one long file of every mode, and one
+        /// row per specimen for a package that wants its data that way.
+        private enum ExportShape
+        {
+            /// <summary>The staged tables, one sheet each.</summary>
+            Workbook,
+
+            /// <summary>Every mode in one file, one value to a row.</summary>
+            LongCsv,
+
+            /// <summary>One row per specimen, a variable's replicates averaged.</summary>
+            PerSpecimen
+        }
+
+        // Static so the choice outlives one window, the way the staged sheets do: it is a
+        // way of working rather than a property of any one table. The per-tab Export to
+        // CSV buttons are unaffected — a single table read on its own is what the wide
+        // shape is good at.
+        private static ExportShape _shape = ExportShape.Workbook;
 
         private TextBlock _workbookStatus;
         private Button _exportWorkbookButton;
@@ -627,7 +642,12 @@ namespace DinoLino.Utilities
                 string header = table.MeasurementHeaders[sourceIndex];
 
                 Button hide = null;
-                if (table.AllowColumnHiding)
+
+                // The alignment flag belongs to the specimen rather than to this table,
+                // the same as a group column, so it carries no hide button either. The
+                // reshaped exports write it of the specimen and would go on writing it,
+                // which would leave the button saying it had done something it had not.
+                if (table.AllowColumnHiding && !table.IsAlignedColumn(sourceIndex))
                 {
                     hide = GlyphButton("\u2715", "Hide this column (removes it from the export too)");
                     hide.Click += (s, e) =>
@@ -1460,34 +1480,59 @@ namespace DinoLino.Utilities
             };
             _exportWorkbookButton.Click += (s, e) =>
             {
-                if (_longCsv) ExportLongCsv();
-                else ExportWorkbook();
+                switch (_shape)
+                {
+                    case ExportShape.LongCsv: ExportLongCsv(); break;
+                    case ExportShape.PerSpecimen: ExportPerSpecimen(); break;
+                    default: ExportWorkbook(); break;
+                }
             };
 
-            var longFormat = new CheckBox
+            var label = new TextBlock
             {
-                Content = "Long format CSV",
-                IsChecked = _longCsv,
+                Text = "Export:",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+
+            var picker = new ComboBox
+            {
+                Width = 172,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 16, 0),
-                ToolTip = "Export one CSV file covering every mode instead of a workbook of "
-                        + "sheets: a row for each specimen, replicate, operation and variable, "
-                        + "with the unit in a column of its own. The shape ggplot2 and "
-                        + "pandas read as they are given it, and the one to pivot from for "
-                        + "a package wanting a row per specimen."
+                ToolTip = "Workbook: the added tables, one sheet each\n"
+                        + "Long format CSV: every mode in one file, one value to a row\n"
+                        + "One row per specimen: every variable side by side, replicates averaged"
             };
 
-            longFormat.Click += (s, e) =>
+            // Selected by what it stands for rather than by where it sits, so the order
+            // of the list and the order of the enum are free to differ.
+            foreach (ExportShape shape in new[]
+                     { ExportShape.Workbook, ExportShape.LongCsv, ExportShape.PerSpecimen })
             {
-                _longCsv = longFormat.IsChecked == true;
+                var item = new ComboBoxItem { Content = ShapeName(shape), Tag = shape };
+                picker.Items.Add(item);
+
+                if (shape == _shape) picker.SelectedItem = item;
+            }
+
+            picker.SelectionChanged += (s, e) =>
+            {
+                var item = picker.SelectedItem as ComboBoxItem;
+                if (item != null && item.Tag is ExportShape picked) _shape = picked;
+
                 UpdateFooter();
             };
 
+            // Docked right in turn, so the button sits at the edge with the picker and
+            // its label to its left and the status filling what is left.
             var bar = new DockPanel { Margin = new Thickness(8, 6, 8, 6) };
             DockPanel.SetDock(_exportWorkbookButton, Dock.Right);
             bar.Children.Add(_exportWorkbookButton);
-            DockPanel.SetDock(longFormat, Dock.Right);
-            bar.Children.Add(longFormat);
+            DockPanel.SetDock(picker, Dock.Right);
+            bar.Children.Add(picker);
+            DockPanel.SetDock(label, Dock.Right);
+            bar.Children.Add(label);
             bar.Children.Add(_workbookStatus);
 
             return new Border
@@ -1498,21 +1543,39 @@ namespace DinoLino.Utilities
             };
         }
 
-        /// What the footer's one button writes, and what it says it will write. The long
-        /// export covers every mode whatever is staged, so the staged count has nothing to
-        /// say about it; the button is live either way, since there is always a file to
-        /// write even when the session holds no measurements yet.
+        private static string ShapeName(ExportShape shape)
+        {
+            switch (shape)
+            {
+                case ExportShape.LongCsv: return "Long format CSV";
+                case ExportShape.PerSpecimen: return "One row per specimen";
+                default: return "Workbook";
+            }
+        }
+
+        /// What the footer's one button writes, and what it says it will write. Only the
+        /// workbook is built from the staged tables, so only it has anything to say about
+        /// how many are staged, or any reason to be unavailable; the other two always have
+        /// a file to write, even in a session that holds no measurements yet.
         private void UpdateFooter()
         {
             if (_workbookStatus == null || _exportWorkbookButton == null) return;
 
-            if (_longCsv)
+            switch (_shape)
             {
-                _workbookStatus.Text = "Every mode in one file, one value to a row";
-                _exportWorkbookButton.Content = "Export long CSV…";
-                _exportWorkbookButton.ToolTip = null;
-                _exportWorkbookButton.IsEnabled = true;
-                return;
+                case ExportShape.LongCsv:
+                    _workbookStatus.Text = "Every mode in one file, one value to a row";
+                    _exportWorkbookButton.Content = "Export long CSV…";
+                    _exportWorkbookButton.ToolTip = null;
+                    _exportWorkbookButton.IsEnabled = true;
+                    return;
+
+                case ExportShape.PerSpecimen:
+                    _workbookStatus.Text = "One row per specimen, replicates averaged";
+                    _exportWorkbookButton.Content = "Export specimen CSV…";
+                    _exportWorkbookButton.ToolTip = null;
+                    _exportWorkbookButton.IsEnabled = true;
+                    return;
             }
 
             int n = _selectedSheets.Count;
@@ -1582,6 +1645,158 @@ namespace DinoLino.Utilities
                 BuildLongRows(_undoRedo, CurrentName, _scale),
                 "geometric_data_long.csv");
 
+        /// <summary>
+        /// Writes one row per specimen: every mode's variables side by side, a variable's
+        /// replicates averaged, and beside each operation a count of how many attempts
+        /// went into its means. The shape geomorph and Momocs read, which neither the
+        /// wide tables nor the long file is.
+        /// </summary>
+        /// <remarks>
+        /// Every length and area is written in one unit, because a column cannot mean
+        /// millimetres for one specimen and centimetres for another. The unit is asked
+        /// for only when the session holds more than one of them; with one there is
+        /// nothing to decide, so nothing is asked and the file is written in it.
+        ///
+        /// The tables are built once, each specimen's cells in the unit it was measured
+        /// in, and the conversion is done on the number read back out of the cell. Doing
+        /// it the other way, by restating the calibrations before the cells were written,
+        /// would round every reading to two places in the file's unit instead of its own,
+        /// and a micrometre reading written in millimetres would come out as zero.
+        /// </remarks>
+        private void ExportPerSpecimen()
+        {
+            var tables = Tabs.Select(spec => BuildTable(spec, _undoRedo, CurrentName, _scale)).ToList();
+
+            var units = SpecimenWideTable.UnitsIn(tables);
+            int uncalibrated = SpecimenWideTable.UncalibratedCount(tables);
+
+            // Formula columns cannot be converted, so they are kept only where no
+            // conversion is needed. With no real unit anywhere the file is in image
+            // pixels, and nothing is converted or left out.
+            bool keepFormulas = units.Count <= 1;
+            int formulas = keepFormulas ? 0 : SpecimenWideTable.FormulaColumnCount(tables);
+
+            // Asked when there is a choice to make, and when there is none but the pick
+            // costs something: a specimen with no scale has no length to give in a real
+            // unit, and saying so after the file is written is too late to be any use.
+            bool ask = units.Count > 1 || (units.Count == 1 && uncalibrated > 0);
+
+            string unit =
+                ask                ? AskForUnit(units, uncalibrated, formulas)
+              : units.Count == 1   ? units[0]
+                                   : ScaleUnits.Pixels;
+
+            if (unit == null) return;
+
+            var file = SpecimenWideTable.Build(tables, unit, keepFormulas, _scale);
+
+            ExportCsv(file.Headers, file.Rows, "geometric_data_by_specimen.csv");
+        }
+
+        // The unit to write the file in, and what the pick costs. Returns null when the
+        // export is called off.
+        private string AskForUnit(IReadOnlyList<string> units, int uncalibrated, int formulas)
+        {
+            var picker = new ComboBox { Width = 88, VerticalAlignment = VerticalAlignment.Center };
+            foreach (string unit in units) picker.Items.Add(unit);
+            picker.SelectedIndex = 0;
+
+            var note = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Width = 380,
+                Margin = new Thickness(0, 12, 0, 0),
+                Foreground = Brushes.DimGray
+            };
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock
+            {
+                Text = "Lengths and areas in:",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
+            row.Children.Add(picker);
+
+            var ok = new Button { Content = "Export", Width = 80, IsDefault = true };
+            var cancel = new Button
+            {
+                Content = "Cancel",
+                Width = 80,
+                Margin = new Thickness(8, 0, 0, 0),
+                IsCancel = true
+            };
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 16, 0, 0)
+            };
+            buttons.Children.Add(ok);
+            buttons.Children.Add(cancel);
+
+            var body = new StackPanel { Margin = new Thickness(16) };
+            body.Children.Add(row);
+            body.Children.Add(note);
+            body.Children.Add(buttons);
+
+            var window = new Window
+            {
+                Title = "Export one row per specimen",
+                Content = body,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ShowInTaskbar = false,
+                Owner = this
+            };
+
+            string chosen = null;
+
+            // What the pick costs, said before it is made rather than after the file is
+            // written: a specimen with no scale has no length to give in a real unit.
+            Action describe = () =>
+            {
+                string unit = picker.SelectedItem as string;
+
+                string scales =
+                    uncalibrated == 0
+                        ? "Every specimen has a scale, so all of them can be given in " + unit + "."
+                  : uncalibrated == 1
+                        ? "One specimen has no scale. Its lengths and areas will be blank; its "
+                          + "ratios, angles and counts will not."
+                        : uncalibrated + " specimens have no scale. Their lengths and areas will "
+                          + "be blank; their ratios, angles and counts will not.";
+
+                string calculated =
+                    formulas == 0
+                        ? ""
+                  : formulas == 1
+                        ? "\n\nOne column of your own is calculated rather than measured, so "
+                          + "there is no unit on it to convert and it is left out. The variables "
+                          + "it reads are all in the file, in " + unit + "."
+                        : "\n\n" + formulas + " columns of your own are calculated rather than "
+                          + "measured, so there is no unit on them to convert and they are left "
+                          + "out. The variables they read are all in the file, in " + unit + ".";
+
+                note.Text = scales + calculated;
+            };
+
+            describe();
+            picker.SelectionChanged += (s, e) => describe();
+
+            ok.Click += (s, e) =>
+            {
+                chosen = picker.SelectedItem as string;
+                window.DialogResult = true;
+            };
+
+            window.ShowDialog();
+
+            return chosen;
+        }
+
         // Every mode's rows, interleaved by specimen. The tables are built once and then
         // walked a specimen at a time; each holds one block per specimen in the same
         // order, since every table is built from the same walk of history.
@@ -1596,7 +1811,7 @@ namespace DinoLino.Utilities
             for (int specimen = 0; specimen < specimens; specimen++)
             {
                 foreach (var table in tables)
-                    table.AppendLongRows(rows, specimen);
+                    table.AppendLongRows(rows, specimen, scale);
             }
 
             return rows;
