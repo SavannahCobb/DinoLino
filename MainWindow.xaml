@@ -55,7 +55,7 @@
                 <MenuItem Header="_Restore Default Settings" Click="Menu_RestoreDefaults"
                           ToolTip="Return every remembered setting to how the program first opens, wherever its menu item lives."/>
             </MenuItem>
-            <MenuItem Header="_Edit" MouseLeave="Menu_MouseLeave">
+            <MenuItem Header="_Edit" MouseLeave="Menu_MouseLeave" SubmenuOpened="MenuEdit_SubmenuOpened">
                 <MenuItem Header="_Undo" x:Name="UI_MenuUndo" Click="Menu_Undo"  InputGestureText="Ctrl+Z"/>
                 <MenuItem Header="_Redo" x:Name="UI_MenuRedo" Click="Menu_Redo"  InputGestureText="Ctrl+Y"/>
                 <Separator/>
@@ -109,13 +109,12 @@
                           Click="Menu_PictureAdjustment"
                           ToolTip="Adjust how the picture is shown: brightness, contrast and saturation, kept per specimen and reversible."/>
                 <MenuItem Header="_Decimate" x:Name="UI_MenuDecimate" IsEnabled="False" Click="Menu_DownSample"/>
-                <MenuItem Header="_Flip" x:Name="UI_MenuFlip" IsEnabled="False">
-                    <MenuItem Header="_Horizontal"  Click="Menu_FlipHorizontal"/>
-                    <MenuItem Header="_Vertical"  Click="Menu_FlipVertical"/>
-                </MenuItem>
-                <MenuItem Header="_Rotate" x:Name="UI_MenuRotate" IsEnabled="False">
-                    <MenuItem Header="_Rotate Right 90°"  Click="Menu_RotateRight"/>
-                    <MenuItem Header="_Rotate Left 90°"  Click="Menu_RotateLeft"/>
+                <MenuItem Header="_Transform" x:Name="UI_MenuTransform" IsEnabled="False">
+                    <MenuItem Header="Rotate _Left 90°" Click="Menu_RotateLeft"/>
+                    <MenuItem Header="Rotate _Right 90°" Click="Menu_RotateRight"/>
+                    <Separator/>
+                    <MenuItem Header="Flip _Horizontal" Click="Menu_FlipHorizontal"/>
+                    <MenuItem Header="Flip _Vertical" Click="Menu_FlipVertical"/>
                 </MenuItem>
                 <MenuItem Header="Reposition 3D _Object" x:Name="UI_MenuReposition3D"
                           Click="Menu_Reposition3DModel" IsEnabled="False"
@@ -150,6 +149,8 @@
             <MenuItem Header="_Help" MouseLeave="Menu_MouseLeave">
                 <MenuItem Header="_About" Click="Menu_About"/>
                 <MenuItem Header="_User Guide" Click="Menu_UserGuide"/>
+                <MenuItem Header="_Check for Updates" Click="Menu_CheckForUpdates"/>
+                <MenuItem Header="View _Log" Click="Menu_ViewLog"/>
             </MenuItem>
         </Menu>
 
@@ -166,6 +167,7 @@
                     - Draw mode
             - Work Space
         -->
+
         <!-- Tips Bar -->
         <Border x:Name="UI_TipsBar"
         DockPanel.Dock="Bottom"
@@ -180,6 +182,232 @@
                VerticalAlignment="Center"
                TextWrapping="Wrap"/>
         </Border>
+
+        <!-- Collapsible Zoom / Flip / Rotate bar -->
+        <Grid DockPanel.Dock="Top"
+      HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StatusBar Grid.Column="0">
+                <StatusBar.Style>
+                    <Style TargetType="StatusBar">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=UI_ViewBarToggle}"
+                                 Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StatusBar.Style>
+
+                <!-- Zoom -->
+                <StatusBarItem>
+                    <TextBlock Text="Zoom:"
+                       VerticalAlignment="Center"/>
+                </StatusBarItem>
+
+                <StatusBarItem>
+                    <TextBox x:Name="UI_ZoomPercent"
+                     Width="58"
+                     Text="100"
+                     HorizontalContentAlignment="Right"
+                     VerticalContentAlignment="Center"
+                     ToolTip="Enter a zoom percentage, then press Enter."
+                     KeyDown="ZoomPercent_KeyDown"
+                     LostKeyboardFocus="ZoomPercent_LostKeyboardFocus"/>
+                </StatusBarItem>
+
+                <StatusBarItem Padding="0">
+                    <TextBlock Text="%"
+                       VerticalAlignment="Center"/>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <StatusBarItem>
+                    <Button x:Name="UI_Zoom100"
+                    Content="100%"
+                    Click="Zoom100_Click"
+                    ToolTip="Show the image at its actual pixel size."
+                    Margin="4,0,0,0"/>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <!-- Flip horizontal: left/right shapes across a vertical mirror axis. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_FlipHorizontal"
+                            Click="Menu_FlipHorizontal"
+                            ToolTip="Flip the image horizontally (left to right)."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 2,4 L 8,10 L 2,16 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 20,4 L 14,10 L 20,16 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 11,1 L 11,19"
+                              Stroke="#666666"
+                              StrokeThickness="1"
+                              StrokeDashArray="2,2"/>
+                            </Canvas>
+                            <TextBlock Text="Flip Horizontal"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <!-- Flip vertical: top/bottom shapes across a horizontal mirror axis. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_FlipVertical"
+                            Click="Menu_FlipVertical"
+                            ToolTip="Flip the image vertically (top to bottom)."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 4,2 L 11,8 L 18,2 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 4,18 L 11,12 L 18,18 Z"
+                              Fill="#4389C7"/>
+                                <Path Data="M 1,10 L 21,10"
+                              Stroke="#666666"
+                              StrokeThickness="1"
+                              StrokeDashArray="2,2"/>
+                            </Canvas>
+                            <TextBlock Text="Flip Vertical"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <!-- Counterclockwise rotation. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_RotateLeft"
+                            Click="Menu_RotateLeft"
+                            ToolTip="Rotate the image 90° counterclockwise."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 6,14 A 7,7 0 1 1 17,7"
+                              Stroke="#4389C7"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              Fill="Transparent"/>
+                                <Path Data="M 2,11 L 6,16 L 10,11 Z"
+                              Fill="#4389C7"/>
+                            </Canvas>
+                            <TextBlock Text="Rotate Left"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <!-- Clockwise rotation. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_RotateRight"
+                            Click="Menu_RotateRight"
+                            ToolTip="Rotate the image 90° clockwise."
+                            Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                            Height="20"
+                            Margin="0,0,5,0">
+                                <Path Data="M 16,14 A 7,7 0 1 0 5,7"
+                              Stroke="#4389C7"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              Fill="Transparent"/>
+                                <Path Data="M 20,11 L 16,16 L 12,11 Z"
+                              Fill="#4389C7"/>
+                            </Canvas>
+                            <TextBlock Text="Rotate Right"
+                               VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+
+                <Separator/>
+
+                <!-- Screenshot: camera icon plus command text. -->
+                <StatusBarItem>
+                    <Button x:Name="UI_TakeScreenshot"
+                      Click="Menu_Screenshot"
+                      ToolTip="Capture the visible workspace as an image."
+                      Padding="6,3">
+                        <StackPanel Orientation="Horizontal">
+                            <Canvas Width="22"
+                              Height="20"
+                              Margin="0,0,5,0">
+                                <!-- Camera body -->
+                                <Path Data="M 2,6
+                                       L 6,6
+                                       L 8,3
+                                       L 14,3
+                                       L 16,6
+                                       L 20,6
+                                       L 20,17
+                                       L 2,17 Z"
+                                Fill="#4389C7"
+                                Stroke="#2B5D8A"
+                                StrokeThickness="1"/>
+
+                                <!-- Lens -->
+                                <Ellipse Width="8"
+                                   Height="8"
+                                   Canvas.Left="7"
+                                   Canvas.Top="8"
+                                   Fill="#F5F5F5"
+                                   Stroke="#2B5D8A"
+                                   StrokeThickness="1"/>
+
+                                <Ellipse Width="4"
+                                   Height="4"
+                                   Canvas.Left="9"
+                                   Canvas.Top="10"
+                                   Fill="#4389C7"/>
+                            </Canvas>
+
+                            <TextBlock Text="Take Screenshot"
+                                 VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StatusBarItem>
+            </StatusBar>
+
+            <!-- Always visible: occupies the same right-hand column in both states. -->
+            <ToggleButton x:Name="UI_ViewBarToggle"
+                  Grid.Column="1"
+                  Width="25"
+                  MinHeight="25"
+                  IsChecked="True"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  ToolTip="Show or hide the Zoom, Flip, and Rotate bar.">
+                <ToggleButton.Style>
+                    <Style TargetType="ToggleButton">
+                        <Setter Property="Content" Value="+"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Content" Value="−"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ToggleButton.Style>
+            </ToggleButton>
+        </Grid>
+
         <Grid x:Name="UI_MainWindow">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="0.28*" MinWidth="150" MaxWidth="550"/>
@@ -202,23 +430,6 @@
                 Width="{Binding ViewportWidth, ElementName=UI_ControlPanelScroller}">
                     <!-- Controls that aren't dependent on mode type  -->
                     <!-- Clears all added/Drawn UI from work space - might move this as a file or edit command with a keyboard shortcut -->
-                    <StackPanel x:Name="UI_GlobalControls" Orientation="Horizontal" Margin="10,10,10,5">
-                        <TextBox x:Name="UI_SpecimenNameBox" MaxLength="20"
-                             VerticalAlignment="Center"
-                             MinWidth="100"/>
-                        <StackPanel Orientation="Vertical" Margin="8,1,0,1">
-                            <Button x:Name="UI_SpecimenUp" Content="▲" Width="22" Height="18"
-                                Padding="0,-4,0,1" Click="SpecimenCount_Up"/>
-                            <Button x:Name="UI_SpecimenDown" Content="▼" Width="22" Height="18"
-                                Padding="-4" Click="SpecimenCount_Down"/>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <TextBlock x:Name="UI_LoadedFileText"
-                           Margin="10,0,10,5"
-                           Foreground="#777"
-                           TextTrimming="CharacterEllipsis"
-                           Text="{Binding LoadedFileLabel}"/>
 
                     <!-- Mode tabs -->
                     <TabControl x:Name="UI_ControlTabs" Margin="0,10,0,10"
@@ -229,63 +440,6 @@
                         <TabItem Header="Outline"/>
                     </TabControl>
                     <ContentControl x:Name="UI_ModePanel" Margin="0,0,0,10"/>
-                    <StackPanel Margin="10,0,10,-5">
-                        <TextBlock x:Name="UI_ScaleStatus"
-                               Text="{Binding StatusText}"/>
-                        <TextBlock x:Name="UI_AlignStatus" Text="{Binding StatusText}"/>
-                    </StackPanel>
-                    <Button x:Name="UI_ClearSpecimenButton"
-                    Margin="10,10,10,10"
-                    MinHeight="32"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center"
-                    VerticalAlignment="Top"
-                    Padding="8,4"
-                    IsEnabled="False"
-                    Click="Menu_ClearSpecimen"
-                    ToolTip="Take every kind of measurement off the specimen on screen. This cannot be undone. Other specimens are untouched.">
-                        <TextBlock Text="Clear Specimen Measurements"
-                        TextWrapping="Wrap"
-                        TextAlignment="Center"/>
-                    </Button>
-
-                    <Grid Margin="10,10,10,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Button x:Name="UI_ScaleButton"
-                                Grid.Column="0"
-                                Margin="0,0,5,0"
-                                MinHeight="32"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                VerticalAlignment="Top"
-                                Padding="8,4"
-                                IsEnabled="False"
-                                Click="Menu_SetScale">
-                            <TextBlock Text="Scale Image"
-                                       TextWrapping="Wrap"
-                                       TextAlignment="Center"/>
-                        </Button>
-
-                        <Button x:Name="UI_AlignButton"
-                                Grid.Column="1"
-                                Margin="5,0,0,0"
-                                MinHeight="32"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                VerticalAlignment="Top"
-                                Padding="8,4"
-                                IsEnabled="False"
-                                Click="Menu_AlignImage">
-                            <TextBlock Text="Align"
-                                       TextWrapping="Wrap"
-                                       TextAlignment="Center"/>
-                        </Button>
-                    </Grid>
-
 
                     <!-- Creature art: the 1:2:1 columns make the middle column exactly half
                      the control panel's width, so the artwork is half size and centred
@@ -296,7 +450,7 @@
                             <ColumnDefinition Width="2*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <svgc:SvgViewbox Grid.Column="1" Source="Icons/FullCreature.svg" Height="110" Margin="0,10,0,10"/>
+                        <svgc:SvgViewbox Source="Icons/FullCreature.svg" Margin="48,10,48,-43" Grid.ColumnSpan="3"/>
                     </Grid>
                 </StackPanel>
             </ScrollViewer>
@@ -566,7 +720,7 @@
                             </TextBlock>
                         </Canvas>
                     </Border>
-                    
+
                     <!-- Navigation window overlay: draggable, resizable overview of the whole image
                      (Settings ▸ See Navigation Window). Clicking or dragging on the picture pans the
                      zoomed workspace view to that spot. -->
@@ -687,12 +841,12 @@
                     <DockPanel DockPanel.Dock="Top" Margin="2,0,0,2">
                         <Button Style="{StaticResource SidebarMinimizeButton}"
                                 Click="Workshop_Minimize"
-                                ToolTip="Hide the Batch Workshop. Show it again from Settings ▸ See Batch Workshop."/>
-                        <TextBlock Text="Batch Workshop"
+                                ToolTip="Hide the Data Workshop. Show it again from Settings ▸ See Data Workshop."/>
+                        <TextBlock Text="Data Workshop"
                                FontWeight="Bold" FontSize="16"
                                HorizontalAlignment="Left" VerticalAlignment="Center"/>
                     </DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Edit and export data for all specimens."
+                    <TextBlock DockPanel.Dock="Top" Text="Edit and export specimen data."
                            Foreground="#777" TextWrapping="Wrap"
                            HorizontalAlignment="Left" Margin="2,0,0,8"/>
 
@@ -741,12 +895,162 @@
                                 </Style>
                             </StackPanel.Resources>
 
+                            <StackPanel x:Name="UI_GlobalControls" 
+                                        Orientation="Horizontal" 
+                                        Margin="4,0,0,0">
+
+
+                                <StackPanel Orientation="Vertical" 
+                                            Margin="0,1,0,1">
+                                    <Button x:Name="UI_SpecimenUp" 
+                                            Content="▲" 
+                                            Width="22" 
+                                            Height="18"
+                                            Padding="0,-4,0,1" 
+                                            Click="SpecimenCount_Up"/>
+                                    <Button x:Name="UI_SpecimenDown" 
+                                            Content="▼" 
+                                            Width="22" 
+                                            Height="18"
+                                            Padding="-4" 
+                                            Click="SpecimenCount_Down"/>
+                                </StackPanel>
+
+                                <TextBox x:Name="UI_SpecimenNameBox" 
+                                         Margin="4,0,0,0"
+                                         MaxLength="20"
+                                         VerticalAlignment="Center"
+                                         HorizontalAlignment="Center"
+                                         MinWidth="100" 
+                                         Height="32" 
+                                         Width="119"/>
+                                <!-- Specimen actions appear horizontally to the right of the arrows. -->
+                                <StackPanel Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="4,0,0,0">
+
+                                    <!-- Reset / refresh -->
+                                    <Button x:Name="UI_ClearSpecimenButton"
+                                            Width="26"
+                                            Height="26"
+                                            Padding="0"
+                                            Margin="2,0,3,0"
+                                            ToolTip="Clear specimen data"
+                                            IsEnabled="False"
+                                            Click="Menu_ClearSpecimen"
+                                            Content="C">
+                                    </Button>
+
+                                    <!-- Scale / diagonal ruler -->
+                                    <Button x:Name="UI_ScaleButton"
+                                            Width="26"
+                                            Height="26"
+                                            Padding="0"
+                                            Margin="2,0,3,0"
+                                            Click="Menu_SetScale"
+                                            ToolTip="Set image scale">
+
+                                        <Viewbox Width="16" Height="16">
+                                            <Grid RenderTransformOrigin="0.5,0.5">
+                                                <Grid.RenderTransform>
+                                                    <RotateTransform Angle="-45"/>
+                                                </Grid.RenderTransform>
+
+                                                <Canvas Width="24" Height="24">
+                                                    <Rectangle Canvas.Left="2"
+                                                               Canvas.Top="8"
+                                                               Width="20"
+                                                               Height="8"
+                                                               Stroke="Black"
+                                                               StrokeThickness="2"
+                                                               Fill="Transparent"/>
+
+                                                    <Line X1="5" Y1="8" X2="5" Y2="12"
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
+
+                                                    <Line X1="9" Y1="8" X2="9" Y2="14"
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
+
+                                                    <Line X1="13" Y1="8" X2="13" Y2="12"
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
+
+                                                    <Line X1="17" Y1="8" X2="17" Y2="14"
+                                                          Stroke="Black"
+                                                          StrokeThickness="2"/>
+                                                </Canvas>
+                                            </Grid>
+                                        </Viewbox>
+                                    </Button>
+
+                                    <!-- Alignment / coordinate axes -->
+                                    <Button x:Name="UI_AlignButton"
+                                            Width="26"
+                                            Height="26"
+                                            Padding="0"
+                                            Margin="2,0,0,0"
+                                            Click="Menu_AlignImage"
+                                            IsEnabled="False"
+                                            ToolTip="Set image alignment">
+                                        <Viewbox Width="16" Height="16">
+                                            <Canvas Width="24" Height="24">
+                                                <!-- Horizontal axis -->
+                                                <Line X1="4" Y1="18" X2="20" Y2="18"
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"/>
+
+                                                <!-- Vertical axis -->
+                                                <Line X1="6" Y1="20" X2="6" Y2="4"
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"/>
+
+                                                <!-- X-axis arrowhead -->
+                                                <Path Data="M20,18 L16,15 M20,18 L16,21"
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Fill="Transparent"/>
+
+                                                <!-- Y-axis arrowhead -->
+                                                <Path Data="M6,4 L3,8 M6,4 L9,8"
+                                                      Stroke="Black"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Fill="Transparent"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <TextBlock x:Name="UI_LoadedFileText"
+                                       Margin="4,0,10,5"
+                                       Foreground="#777"
+                                       TextTrimming="CharacterEllipsis"
+                                       Text="{Binding LoadedFileLabel}"/>
+                            <TextBlock x:Name="UI_ScaleStatus"
+                                       Margin="4,0,10,5"
+                                       Foreground="#777"
+                                       Text="{Binding StatusText}"/>
+                            <TextBlock x:Name="UI_AlignStatus"
+                                       Margin="4,0,10,5" 
+                                       Foreground="#777"  
+                                       Text="{Binding StatusText}"/>
+
                             <Grid Style="{StaticResource WorkshopRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Geometric Data" Style="{StaticResource WorkshopRowLabel}"/>
+                                <TextBlock Grid.Column="0" Text="Data Tables" Style="{StaticResource WorkshopRowLabel}"/>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <Button x:Name="UI_EditGeometric" Style="{StaticResource WorkshopEditButton}"
                                             Click="Workshop_EditGeometric"/>
@@ -754,7 +1058,7 @@
                                             Click="Workshop_ExportGeometric"/>
                                 </StackPanel>
                             </Grid>
-                            
+
                             <Grid Style="{StaticResource WorkshopRow}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -937,3 +1241,4 @@
         </Grid>
     </DockPanel>
 </Window>
+

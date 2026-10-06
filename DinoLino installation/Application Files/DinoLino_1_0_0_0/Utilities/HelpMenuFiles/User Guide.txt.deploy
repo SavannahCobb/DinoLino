@@ -302,24 +302,6 @@ Resting on Operation History offers two things to do with what has been measured
 Edit Operation History:
 Opens the tables of everything measured this session, one tab per mode -- Curvature, Angle, Draw, Outline and EFA -- plus a Custom tab. A tab shows that mode's whole table: every variable of the mode as a column, every attempt as a row, so one row holds every measurement made on the same attempt.
 Everything is done here. Read a table, delete a row or a whole specimen, hide a column, add a variable of your own from a formula, export the table on its own as a CSV, or stage it for the workbook. Deleting a row or a specimen is permanent and Ctrl + Z will not bring it back.
-
-Export shapes:
-A picker in the footer of the window, beside the button it governs. The same measurements can leave here in three shapes, and which one is wanted depends on what is going to read them.
-Workbook, the one it opens on, writes the tables added to the workbook, one sheet each, exactly as they stand on screen.
-Long format CSV writes a single file, suggested as geometric_data_long.csv, holding every mode at once -- one table, no sheets and no tabs. This is the shape ggplot2 and pandas read as they are given it.
-One row carries one value, under these columns: Specimen, your group columns, spec_aligned, Replicate, Operation, Variable, Value and Unit. Operation names the tool the value came from -- Circular Arc, Triangle, Ellipse, Line -- so a variable two tools both measure is still told apart, and a variable of your own from a formula reads Formula with its mode in brackets, as Formula (Curvature). Replicate is the attempt number, so three arcs on one specimen are three replicates rather than three columns. It counts within one operation and not across them -- the first outline carrying metadata and the first outline carrying an EFA need not be the same outline -- so Specimen and Replicate together are not a safe key for joining one operation's rows to another's.
-The unit has a column of its own, which keeps Value a number: a length reads 12.40 under Value and mm under Unit, not 12.40 mm in one cell. Degrees, ratios and counts arrive with Unit empty, since the tables record no unit for them. A ratio the geometry leaves undefined is left empty, so it reads as missing rather than as text. One word anywhere in Value would make the whole column text and silently break a plot drawn against it, which is why none is written.
-A specimen's rows are kept together -- every mode for the first specimen, then every mode for the next. Empty cells are left out: a blank row would say only that a measurement was not taken, which its absence already says, and these tables are mostly blank. Hidden columns are left out, the same as in the wide shape. The Custom tab is not in the file, since every variable it shows is already there under the tool that measured it.
-One row per specimen writes geometric_data_by_specimen.csv: every mode's variables side by side, one row to a specimen. This is the shape geomorph and Momocs ask for, which neither of the other two is -- both want one row or one array slice per specimen, and geomorph refuses inputs whose numbers of observations disagree. Note that neither package analyses measurements of this kind as shape: both are built on coordinates, so these variables serve as the covariates beside a shape analysis rather than as its input.
-A variable's attempts are averaged, since one row cannot hold three arcs. Beside each operation is a count of how many attempts the specimen has of it -- circular_arc_n, triangle_n, outline_n -- so the mean of one attempt cannot be mistaken for the mean of five. The count is of readings taken, which is not always the number averaged: a length left out because no conversion reaches the file's unit was still a reading taken.
-Only what was measured is in the file. Measure circular arcs and nothing else and the file holds the circular arc variables and their count, with no parabolic arc, spline, triangle, outline or EFA column at all. A tool no specimen was measured with contributes neither its variables nor its count, and a variable of a tool that was used but which stands empty for every specimen -- a harmonic deeper than any outline reached, a ratio the geometry leaves undefined -- is left out too. The tabs on screen are the other way round, every variable of a mode always a column, because there a column standing empty says plainly that nothing was drawn with that tool; in a file it says only that there is cleaning to do before the data can be read.
-Every length and area in the file is in one unit, because a column heading can name only one and a column of millimetres for one specimen and centimetres for another is a wrong number rather than a wrong label. The unit is in the heading, as circ_radius_mm and tri_area_mm2. The conversion is done on the number, not on the calibration behind it, so a reading already rounded for display in its own unit keeps every digit it had: 0.06 cm comes through as 0.6 mm rather than as 0.00.
-A specimen with no scale is measured in image pixels, which no real unit converts to, so its lengths and areas are blank while its ratios, angles and counts are there as usual. Image pixels are not offered as the file's unit while any specimen does have a scale, since choosing them would blank every specimen that has one. A session with no scale anywhere is written in image pixels, and then nothing is blank.
-You are asked which unit to write in when the session holds more than one, and told what the pick costs when it costs something -- how many specimens have no scale -- before it is made rather than after the file is written. Where there is one unit and every specimen has it, nothing is asked.
-A column of your own from a formula is left out when more than one unit had to be converted. A formula writes a bare number, so a column calculated from a length holds one specimen's millimetres beside another's centimetres with nothing left in the cell to tell them apart, and no heading could name a unit for it. The measured variables it was calculated from are all in the file and all in one unit, so the formula can be taken again over those. Where one unit covers the session, formula columns are kept as they are.
-Whether the specimen is aligned, spec_aligned, is one column in both files, beside the specimen's name and its groups. It is a property of the specimen and not of anything measured on it, so it is one yes or no for a specimen however many tools were used and whatever was drawn with them, and it is never filed under a mode. It is read from the specimen rather than from a measurement, so it is answered even for a specimen measured only with tools that never look at it. The per-specimen file answers it for every specimen; the long file can only answer it for a specimen that has rows, since a specimen with nothing measured has none.
-The tabs on screen read it inside the modes that use it, which is where it has to be read from: an angle taken from the specimen's axis means something different depending on it, so it belongs beside that angle on screen. It has no hide button there, as the group columns have none, because the two files write it of the specimen whatever a table is arranged to show.
-The Export to CSV button on each tab is unaffected by the picker and always writes that tab's table as it stands on screen, which is what one table read on its own is good for.
 The Custom tab joins ticked variables from any mode side by side. Columns may be added there and the Attempt heading retyped, but rows, specimens and columns are not deleted from it: a row there can belong to several modes at once, so there is no one measurement for a delete to mean.
 
 Export Operation History:
@@ -457,7 +439,6 @@ A project saved by an earlier version recorded its staged sheets under the old p
 Formula Columns:
 On any tab of the Operation History window, click Add column to make a new variable calculated from that table's columns. Enter a name of up to 14 characters and a formula, such as = outline_area / outline_perim^2. Column names may be typed straight into the formula, or found in the list beside it and inserted.
 A column you have made carries a pencil on its header, which opens the formula again to change or delete it. A formula naming a column its table does not have is listed under the table instead of calculated, so it can still be corrected.
-Angle Mode's three triangle angles were called tri_anglea, tri_angleb and tri_anglec in earlier versions and are now angle_a, angle_b and angle_c. A project saved under the old names keeps its ticked variables and its hidden columns, which are matched up when it opens; a formula written with an old name is reported on opening and needs the new one typed in.
 A column name in a formula stands for that column's value on the same row. Formulas use addition, subtraction, multiplication, division and powers, with brackets to group them. Comparisons are written = <> < <= > >= and give 1 or 0, as in IF(outline_area > 100, 1, 0).
 Row functions: SUM, PRODUCT, AVERAGE, MIN, MAX, COUNT, MEDIAN, ABS, SQRT, LN, LOG, LOG10, EXP, POWER, MOD, ROUND, INT, SIGN, PI, SIN, COS, TAN, ASIN, ACOS, ATAN, ATAN2, DEGREES, RADIANS, IF, IFBLANK, ISBLANK.
 Whole-column functions, taken over every specimen: COLSUM, COLMEAN, COLMIN, COLMAX, COLCOUNT, COLMEDIAN, COLSD.
@@ -540,13 +521,13 @@ In Curvature Mode:
 "spline_length" = Length of n-Point Spline
 
 In Angle Mode:
-"angle_a" = Angle A of Triangle
-"angle_b" = Angle B of Triangle
-"angle_c" = Angle C of Triangle
+"tri_anglea" = Angle A of Triangle
+"tri_angleb" = Angle B of Triangle
+"tri_anglec" = Angle C of Triangle
 "tri_aspect" = Aspect Ratio of Triangle
 "tri_area" = Area of Triangle
 "axis_angle" = Angle from the specimen's axis to the line drawn, clockwise, in degrees
-"spec_aligned" = Whether the specimen has an axis set. A property of the specimen, so it reads the same wherever it appears
+"spec_aligned" = Whether the specimen had an axis set when the angle was measured
 
 In Draw Mode:
 "rect_aspect" = Aspect Ratio of Rectangle
@@ -560,7 +541,7 @@ In Draw Mode:
 "line_ydist" = Y Distance of Line
 "line_ratio" = Ratio of line length relative to previous line length
 "line_angle" = Angle of line relative to previous line
-"spec_aligned" = Whether the specimen has an axis set. A property of the specimen, so it reads the same wherever it appears
+"spec_aligned" = Whether the specimen had an axis set when the line was measured
 
 In Outline Mode:
 "outline_maxlength" = Maximum Length of Outline

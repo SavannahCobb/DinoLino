@@ -563,9 +563,15 @@ namespace DinoLino
 
                 WorkshopCategory category;
                 if (!Enum.TryParse(saved.Category, out category)) continue;
-                if (CustomTableSelection.IsSelected(saved.Header)) continue;
 
-                CustomTableSelection.Toggle(category, saved.Header);
+                // Through the rename map: a project written before a column was renamed
+                // still names it the old way, and dropping it would be a tick silently
+                // lost rather than a tick the user took out.
+                string header = WorkshopTables.CurrentColumnName(saved.Header);
+
+                if (CustomTableSelection.IsSelected(header)) continue;
+
+                CustomTableSelection.Toggle(category, header);
             }
         }
 
@@ -640,7 +646,8 @@ namespace DinoLino
             {
                 if (string.IsNullOrEmpty(column.TableKey) || string.IsNullOrEmpty(column.Name)) continue;
 
-                WorkshopColumnFilter.Hide(column.TableKey, column.Name);
+                WorkshopColumnFilter.Hide(
+                    column.TableKey, WorkshopTables.CurrentColumnName(column.Name));
             }
         }
 
@@ -668,7 +675,9 @@ namespace DinoLino
                     operation,
                     transform,
                     mode != null ? mode.LineColor : null,
-                    mode != null ? mode.LineThickness : WorkMode.DefaultLineThickness);
+                    mode != null ? mode.LineThickness : WorkMode.DefaultLineThickness,
+                    _currentFont,
+                    _currentFontSize);
 
                 // Drawn again for the view as it stands now. An operation carrying no
                 // geometry keeps whatever it was drawn with when it was made.

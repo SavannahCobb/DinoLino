@@ -10,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Diagnostics;
 
 namespace DinoLino
 {
@@ -44,10 +45,79 @@ namespace DinoLino
             userguide.ShowDialog();
         }
 
+        /// Help ▸ View Log. Not modal, so the log can stay open beside the work it is
+        /// being read against.
+        private void Menu_ViewLog(object sender, RoutedEventArgs e)
+        {
+            var log = new LogWindow
+            {
+                Owner = this,
+                FontFamily = _currentFont,
+                FontSize = _currentFontSize
+            };
+            log.Show();
+        }
+
+        private async void Menu_CheckForUpdates(
+    object sender,
+    RoutedEventArgs e)
+        {
+            UpdateCheckResult result = await UpdateChecker.CheckAsync();
+
+            if (!result.WasSuccessful)
+            {
+                MessageBox.Show(
+                    result.ErrorMessage ?? "The update check could not be completed.",
+                    "Check for Updates",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                return;
+            }
+
+            if (!result.UpdateAvailable)
+            {
+                MessageBox.Show(
+                    $"You are using the latest version of DinoLino.\n\n" +
+                    $"Current version: {result.CurrentVersion}",
+                    "Check for Updates",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            MessageBoxResult choice = MessageBox.Show(
+                $"A new version of DinoLino is available.\n\n" +
+                $"Installed version: {result.CurrentVersion}\n" +
+                $"Latest version: {result.LatestVersion}\n\n" +
+                $"Would you like to open the download page?",
+                "Update Available",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (choice == MessageBoxResult.Yes &&
+                !string.IsNullOrWhiteSpace(result.ReleasePageUrl))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = result.ReleasePageUrl,
+                    UseShellExecute = true
+                });
+            }
+        }
+
         // ---- Undo / Redo ----
+
+        /// True while the current mode has an operation begun and not finished. Undo and
+        /// redo are held off until it is completed.
+        private bool OperationUnderWay =>
+            CurrentWorkMode != null && CurrentWorkMode.HasUnfinishedOperation;
 
         private void Menu_Undo(object sender, RoutedEventArgs e)
         {
+            if (OperationUnderWay) return;
+
             var result = UndoRedoManager.Undo();
             if (result == null) return;
 
@@ -58,6 +128,8 @@ namespace DinoLino
 
         private void Menu_Redo(object sender, RoutedEventArgs e)
         {
+            if (OperationUnderWay) return;
+
             var result = UndoRedoManager.Redo();
             if (result == null) return;
 
@@ -66,13 +138,21 @@ namespace DinoLino
                 AddElementToWorkSpace(el);
         }
 
+        /// Sets whether Undo and Redo can be chosen: there must be something to undo or
+        /// redo, and no operation part way through.
         private void BindUndoRedoMenuItems()
         {
-            var undoBinding = new Binding(nameof(WorkMode.CanUndo)) { Source = UndoRedoManager };
-            UI_MenuUndo.SetBinding(MenuItem.IsEnabledProperty, undoBinding);
+            bool free = !OperationUnderWay;
 
-            var redoBinding = new Binding(nameof(WorkMode.CanRedo)) { Source = UndoRedoManager };
-            UI_MenuRedo.SetBinding(MenuItem.IsEnabledProperty, redoBinding);
+            UI_MenuUndo.IsEnabled = free && UndoRedoManager.CanUndo;
+            UI_MenuRedo.IsEnabled = free && UndoRedoManager.CanRedo;
+        }
+
+        // The items are only seen with the Edit menu open, so they are brought up to
+        // date as it opens rather than on every click in the workspace.
+        private void MenuEdit_SubmenuOpened(object sender, RoutedEventArgs e)
+        {
+            BindUndoRedoMenuItems();
         }
 
         // ---- History ----
@@ -362,8 +442,7 @@ namespace DinoLino
             UI_MenuScreenshot.IsEnabled = enabled;
             UI_MenuPictureCorrections.IsEnabled = enabled;
             UI_MenuDecimate.IsEnabled = enabled;
-            UI_MenuFlip.IsEnabled = enabled;
-            UI_MenuRotate.IsEnabled = enabled;
+            UI_MenuTransform.IsEnabled = enabled;
         }
 
         /// Enables Clear Specimen Measurements only while the loaded specimen has something
@@ -627,6 +706,13 @@ namespace DinoLino
             // scale without another edit here. The rows carry no local FontSize,
             // which is what lets this inherit down to them.
             TextElement.SetFontSize(UI_AttemptCounter, size);
+
+            // The modes letter what they draw in this size, and the letters already on
+            // screen are drawn again to match.
+            foreach (var mode in AllWorkModes)
+                mode.LabelFontSize = size;
+
+            RestyleShownOperations();
         }
 
         /// <summary>Applies a font family everywhere the size setting reaches.</summary>
@@ -637,6 +723,11 @@ namespace DinoLino
             TextElement.SetFontFamily(UI_WorkshopPanel, family);
             UI_TipText.FontFamily = family;
             TextElement.SetFontFamily(UI_AttemptCounter, family);
+
+            foreach (var mode in AllWorkModes)
+                mode.LabelFont = family;
+
+            RestyleShownOperations();
         }
     }
 }

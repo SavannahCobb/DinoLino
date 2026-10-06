@@ -18,6 +18,35 @@ namespace DinoLino
     /// </summary>
     internal class OutlineGalleryWindow : Window
     {
+        /// One point of one stored outline, as a row of the Coordinates tab.
+        private sealed class CoordinateRow
+        {
+            public string Specimen { get; set; }
+            public string Outline { get; set; }
+            public int Point { get; set; }
+            public double X { get; set; }
+            public double Y { get; set; }
+        }
+
+        private readonly TabControl _tabs = new TabControl();
+        private TabItem _silhouettesTab;
+
+        private readonly DataGrid _coordinates = new DataGrid
+        {
+            AutoGenerateColumns = false,
+            IsReadOnly = true,
+            CanUserAddRows = false,
+            CanUserDeleteRows = false,
+            CanUserReorderColumns = false,
+            HeadersVisibility = DataGridHeadersVisibility.Column,
+            SelectionMode = DataGridSelectionMode.Extended,
+            ClipboardCopyMode = DataGridClipboardCopyMode.IncludeHeader,
+            GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
+            HorizontalGridLinesBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0xE2, 0xE2))
+        };
+
+        private Button _exportCoordinates;
+
         /// Pixel size the silhouettes are rendered at. Larger than the tile so the
         /// preview stays sharp on a high-DPI display.
         private const int ThumbnailPixels = 192;
@@ -58,6 +87,7 @@ namespace DinoLino
             ShowInTaskbar = false;
 
             var root = new DockPanel { Margin = new Thickness(12) };
+            var gallery = new DockPanel { Margin = new Thickness(8) };
 
             var note = new TextBlock
             {
@@ -69,7 +99,7 @@ namespace DinoLino
                 Margin = new Thickness(0, 0, 0, 10)
             };
             DockPanel.SetDock(note, Dock.Top);
-            root.Children.Add(note);
+            gallery.Children.Add(note);
 
             var footer = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
 
@@ -88,12 +118,18 @@ namespace DinoLino
             DockPanel.SetDock(footer, Dock.Bottom);
             root.Children.Add(footer);
 
-            root.Children.Add(new ScrollViewer
+            gallery.Children.Add(new ScrollViewer
             {
                 Content = _tiles,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
             });
+
+            _silhouettesTab = new TabItem { Header = "Silhouettes", Content = gallery };
+            _tabs.Items.Add(_silhouettesTab);
+            _tabs.Items.Add(new TabItem { Header = "Coordinates", Content = BuildCoordinatesTab() });
+
+            root.Children.Add(_tabs);
 
             Content = root;
 
@@ -112,6 +148,8 @@ namespace DinoLino
         {
             _tiles.Children.Clear();
             _tileFor.Clear();
+
+            RefreshCoordinates();
 
             var stored = CommittedOutlineStore.Outlines;
 
@@ -141,6 +179,151 @@ namespace DinoLino
 
             ApplySelectionVisuals();
             UpdateStatus();
+        }
+
+        // ---- Coordinates ----
+
+        // The points of every stored outline, one to a row: the outlines in the order
+        // the gallery shows them, and each outline's points in the order they run round
+        // it.
+        private UIElement BuildCoordinatesTab()
+        {
+            _coordinates.Columns.Add(TextColumn("specimen", nameof(CoordinateRow.Specimen), null));
+            _coordinates.Columns.Add(TextColumn("outline", nameof(CoordinateRow.Outline), null));
+            _coordinates.Columns.Add(TextColumn("point", nameof(CoordinateRow.Point), null));
+            _coordinates.Columns.Add(TextColumn("x", nameof(CoordinateRow.X), "0.###"));
+            _coordinates.Columns.Add(TextColumn("y", nameof(CoordinateRow.Y), "0.###"));
+
+            var panel = new DockPanel { Margin = new Thickness(8) };
+
+            var note = new TextBlock
+            {
+                Text = "Every point of every stored outline, in the order the points run round it. " +
+                       "X runs to the right and Y runs downwards, in the units the outline was " +
+                       "drawn in on screen. Select rows and press Ctrl+C to copy them.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.Gray,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            DockPanel.SetDock(note, Dock.Top);
+            panel.Children.Add(note);
+
+            _exportCoordinates = new Button
+            {
+                Content = "Export CSV…",
+                Padding = new Thickness(12, 4, 12, 4),
+                Margin = new Thickness(0, 10, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                ToolTip = "Write these coordinates to a CSV file"
+            };
+            _exportCoordinates.Click += (s, e) => ExportCoordinates();
+            DockPanel.SetDock(_exportCoordinates, Dock.Bottom);
+            panel.Children.Add(_exportCoordinates);
+
+            panel.Children.Add(_coordinates);
+            return panel;
+        }
+
+        private static DataGridTextColumn TextColumn(string header, string property, string format)
+        {
+            var binding = new System.Windows.Data.Binding(property);
+
+            if (format != null)
+            {
+                binding.StringFormat = format;
+                binding.ConverterCulture = System.Globalization.CultureInfo.InvariantCulture;
+            }
+
+            return new DataGridTextColumn { Header = header, Binding = binding };
+        }
+
+        private static List<CoordinateRow> CoordinateRows()
+        {
+            var rows = new List<CoordinateRow>();
+
+            foreach (CommittedOutline outline in CommittedOutlineStore.Outlines)
+            {
+                if (outline.Points == null) continue;
+
+                for (int i = 0; i < outline.Points.Count; i++)
+                {
+                    rows.Add(new CoordinateRow
+                    {
+                        Specimen = outline.SpecimenName ?? "",
+                        Outline = outline.Name ?? "",
+                        Point = i + 1,
+                        X = outline.Points[i].X,
+                        Y = outline.Points[i].Y
+                    });
+                }
+            }
+
+            return rows;
+        }
+
+        // Brought up to date with every change the gallery makes, so the two tabs
+        // never disagree about which outlines there are or what they are called.
+        private void RefreshCoordinates()
+        {
+            var rows = CoordinateRows();
+
+            _coordinates.ItemsSource = rows;
+            if (_exportCoordinates != null) _exportCoordinates.IsEnabled = rows.Count > 0;
+        }
+
+        private void ExportCoordinates()
+        {
+            var rows = CoordinateRows();
+            if (rows.Count == 0) return;
+
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export Outline Coordinates",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                DefaultExt = ".csv",
+                FileName = "outline_coordinates.csv",
+                AddExtension = true
+            };
+
+            if (dialog.ShowDialog(this) != true) return;
+
+            var invariant = System.Globalization.CultureInfo.InvariantCulture;
+            var text = new System.Text.StringBuilder();
+            text.AppendLine("specimen,outline,point,x,y");
+
+            foreach (var row in rows)
+            {
+                text.Append(CsvField(row.Specimen)).Append(',')
+                    .Append(CsvField(row.Outline)).Append(',')
+                    .Append(row.Point.ToString(invariant)).Append(',')
+                    .Append(row.X.ToString("0.###", invariant)).Append(',')
+                    .AppendLine(row.Y.ToString("0.###", invariant));
+            }
+
+            try
+            {
+                // With a byte order mark, so Excel reads names outside ASCII correctly.
+                System.IO.File.WriteAllText(
+                    dialog.FileName, text.ToString(), new System.Text.UTF8Encoding(true));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    "The coordinates could not be saved:\n" + ex.Message,
+                    "Export Outline Coordinates",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private static string CsvField(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+
+            return value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0
+                ? value
+                : "\"" + value.Replace("\"", "\"\"") + "\"";
         }
 
         private UIElement BuildTile(CommittedOutline outline)
@@ -300,6 +483,7 @@ namespace DinoLino
                 if (CommittedOutlineStore.Rename(outline, typed))
                 {
                     box.Text = outline.Name;   // shows the trimmed and capped form
+                    RefreshCoordinates();
                     return;
                 }
 
@@ -325,6 +509,9 @@ namespace DinoLino
         private void Gallery_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Delete) return;
+
+            // Delete removes a silhouette only from the tab that shows them.
+            if (!ReferenceEquals(_tabs.SelectedItem, _silhouettesTab)) return;
 
             // Inside a name box Delete edits the text.
             if (Keyboard.FocusedElement is TextBox) return;

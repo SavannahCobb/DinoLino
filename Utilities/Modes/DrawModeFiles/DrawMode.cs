@@ -147,6 +147,20 @@ namespace DinoLino.Utilities.Modes
             CurrentOperation.Clear();
         }
 
+        // Only the line or shape being drawn is given up. The reference direction comes
+        // from lines already finished, so it is kept.
+        public override List<UIElement> AbandonUnfinishedOperation()
+        {
+            var drawn = new List<UIElement>(CurrentOperation);
+            drawn.AddRange(ElementsToRemove);
+
+            ClearElementsToRemove();
+            FinishOperation();
+            _dragStart = default;
+
+            return drawn;
+        }
+
         // ---- Scaled measurements ----
 
         // Image-space measurements behind the scaled rows, kept so those rows can be
@@ -481,7 +495,11 @@ namespace DinoLino.Utilities.Modes
         private void TryCaptureReferenceDirection()
         {
             // The first constrained line defines the direction used by later parallel/perpendicular lines.
-            if (CurrentLineType == LineConstraint.None || _hasReferenceLineDirection)
+            // An angle-locked line takes no fixed reference: it is drawn against whichever
+            // line came before it.
+            if (CurrentLineType == LineConstraint.None
+                || CurrentLineType == LineConstraint.AngleLocked
+                || _hasReferenceLineDirection)
                 return;
 
             Vector2 rawDir = new Vector2(_currentLine.X2 - _currentLine.X1, _currentLine.Y2 - _currentLine.Y1);
@@ -566,12 +584,14 @@ namespace DinoLino.Utilities.Modes
             // against whatever happened to be drawn last, so that is what its angle is
             // measured from. A run of perpendicular lines therefore reads 90, 90, 90
             // instead of 90 followed by zeroes.
-            if (CurrentLineType != LineConstraint.None && _hasReferenceLineDirection)
+            if (CurrentLineType != LineConstraint.None
+                && CurrentLineType != LineConstraint.AngleLocked
+                && _hasReferenceLineDirection)
             {
                 return Sweep(heading - HeadingOf(_referenceLineDirection.X, _referenceLineDirection.Y));
             }
 
-            // Free-drawn: measure against the line before it.
+            // Free-drawn or angle-locked: measure against the line before it.
             var previous = PreviousLine();
             if (previous == null) return "N/A";
 
@@ -604,11 +624,21 @@ namespace DinoLino.Utilities.Modes
 
         private Vector2 ApplyLineConstraint(Vector2 start, Vector2 mousePos)
         {
+            // An angle-locked line is held at the entered angle to the line drawn before
+            // it, however that line was drawn. Each one becomes the reference for the
+            // next, so a run of them turns by the angle every time rather than lying
+            // parallel. With no line yet to measure from, the first is drawn freely.
+            if (CurrentLineType == LineConstraint.AngleLocked)
+            {
+                var previous = PreviousLine();
+
+                return previous == null
+                    ? mousePos
+                    : ConstrainToAngle(start, mousePos, previous.HeadingDegrees, LockedAngleDegrees);
+            }
+
             if (CurrentLineType == LineConstraint.None || !_hasReferenceLineDirection)
                 return mousePos;
-
-            if (CurrentLineType == LineConstraint.AngleLocked)
-                return ConstrainToAngle(start, mousePos, LockedAngleDegrees);
 
             // Parallel uses the captured direction; perpendicular rotates that direction by 90°.
             Vector2 constrainDir = CurrentLineType == LineConstraint.Parallel
@@ -651,11 +681,12 @@ namespace DinoLino.Utilities.Modes
             }
         }
 
-        private Vector2 ConstrainToAngle(Vector2 origin, Vector2 mousePos, double angleDegrees)
+        private Vector2 ConstrainToAngle(
+            Vector2 origin, Vector2 mousePos, double baseHeadingDegrees, double angleDegrees)
         {
-            // Start from the reference line direction, then add the user-specified offset.
-            double baseAngleRadians = Math.Atan2(_referenceLineDirection.Y, _referenceLineDirection.X);
-            double lockedRadians = baseAngleRadians + angleDegrees * Math.PI / 180.0;
+            // Start from the heading of the line being measured from, then add the
+            // user-specified offset.
+            double lockedRadians = (baseHeadingDegrees + angleDegrees) * Math.PI / 180.0;
 
             Vector2 direction = new Vector2(Math.Cos(lockedRadians), Math.Sin(lockedRadians));
             Vector2 toMouse = mousePos - origin;
@@ -776,7 +807,7 @@ namespace DinoLino
         private const double LabelWrapAt = 22.0;
 
         // How long the pointer must rest on a label before its box comes out.
-        private static readonly TimeSpan LabelHoverDelay = TimeSpan.FromSeconds(1.5);
+        private static readonly TimeSpan LabelHoverDelay = TimeSpan.FromSeconds(0.8);
 
         // Labels whose box was out when a screenshot put it away.
         private readonly List<LabelVisual> _hiddenForScreenshot = new List<LabelVisual>();

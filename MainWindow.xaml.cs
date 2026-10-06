@@ -123,6 +123,10 @@ namespace DinoLino
         {
             InitializeComponent();
 
+            // Commands, button presses and tab changes go into the session log
+            // (Help ▸ View Log).
+            AppLog.WatchCommands(this);
+
             PopupChrome.ApplyToPopups(this);
 
             _tipCycleTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };

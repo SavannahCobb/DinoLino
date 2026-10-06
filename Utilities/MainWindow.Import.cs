@@ -187,6 +187,80 @@ namespace DinoLino
             ReportImportResult(imported.Count, models, first == null, failed);
         }
 
+        /// Opens several image files picked together in Open Image. Each becomes a
+        /// specimen, in name order, and the first of them is the one shown: the same
+        /// outcome as importing a folder that held only these files. Only pictures are
+        /// taken; a 3D model picked among them is left out, since it opens through its
+        /// own command.
+        internal void OpenImagesFromPaths(IEnumerable<string> paths)
+        {
+            var files = new List<string>();
+
+            foreach (var path in paths)
+            {
+                if (!string.IsNullOrWhiteSpace(path)) files.Add(path);
+            }
+
+            // The dialog hands the files back in the order it holds them, which is not
+            // the order they are listed in.
+            files.Sort(StringComparer.OrdinalIgnoreCase);
+
+            var imported = new List<Specimen>();
+            var skipped = new List<string>();
+
+            Mouse.OverrideCursor = Cursors.Wait;
+            try
+            {
+                foreach (var file in files)
+                {
+                    string name = Path.GetFileName(file);
+
+                    if (DirectoryModelExtensions.Contains(Path.GetExtension(file)))
+                    {
+                        skipped.Add(name);
+                        continue;
+                    }
+
+                    var bitmap = LoadImportedImage(file);
+                    if (bitmap == null)
+                    {
+                        skipped.Add(name);
+                        continue;
+                    }
+
+                    imported.Add(SpecimenManager.ImportSpecimen(bitmap, name, null, FullPath(file)));
+                }
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
+
+            if (imported.Count > 0)
+            {
+                LoadSpecimenIntoWorkspace(imported[0]);
+
+                RebuildSampleList();
+                UpdateAttemptCounter();
+            }
+
+            if (skipped.Count == 0) return;
+
+            var message = new System.Text.StringBuilder();
+
+            message.Append(imported.Count == 0
+                ? "None of the selected files could be opened as an image."
+                : imported.Count == 1 ? "1 image opened." : $"{imported.Count} images opened.");
+
+            message.Append(skipped.Count == 1
+                ? "\n\n1 file is not an image DinoLino can open here and was skipped:\n"
+                : $"\n\n{skipped.Count} files are not images DinoLino can open here and were skipped:\n");
+            message.Append(string.Join("\n", skipped));
+
+            MessageBox.Show(this, message.ToString(), "Open Image",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
         /// Reads one image file. Returns null when the file cannot be decoded, so one
         /// bad file does not abandon the whole folder.
         private static BitmapImage LoadImportedImage(string path)

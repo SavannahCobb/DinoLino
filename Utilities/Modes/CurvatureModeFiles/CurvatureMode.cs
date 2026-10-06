@@ -18,6 +18,12 @@ namespace DinoLino.Utilities.Modes
         public override string TabName => "Curvature";
         public override bool IsStartingNewOperation => CurrentStep == 0 || CurrentStep == 3;
 
+        // An arc counts its clicks in CurrentStep. A spline does not: it is open from
+        // its first point until it is finalized, or for as long as a freehand stroke is
+        // held down.
+        public override bool HasUnfinishedOperation =>
+            !IsStartingNewOperation || _splinePoints.Count > 0 || _freehandDrawing;
+
         // A probe click measures the existing spline and adds nothing, so the router
         // must not clear the workspace on it.
         public override bool IsProbeInteraction =>

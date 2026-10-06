@@ -15,6 +15,25 @@
     <WarningLevel>4</WarningLevel>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TargetFrameworkProfile />
+    <IsWebBootstrapper>true</IsWebBootstrapper>
+    <PublishUrl>C:\Users\savan\Documents\GitHub\DinoLino\DinoLino installation\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Web</InstallFrom>
+    <UpdateEnabled>true</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>false</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <InstallUrl>https://github.com/SavannahCobb/DinoLino/</InstallUrl>
+    <CreateWebPageOnPublish>true</CreateWebPageOnPublish>
+    <WebPage>publish.htm</WebPage>
+    <ApplicationRevision>1</ApplicationRevision>
+    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <PublishWizardCompleted>true</PublishWizardCompleted>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>preview</LangVersion>
@@ -41,6 +60,26 @@
   <PropertyGroup>
     <ApplicationIcon>
     </ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- ClickOnce stages a publish in a folder it empties first, which by default sits
+         under the project's own bin. A file-syncing client holds open the files it is
+         uploading, and the emptying then fails and stops the build. Staging under the
+         machine's own local application data keeps that folder out of reach of anything
+         that syncs, and the built program still lands in bin as before. -->
+    <PublishDir>$(LOCALAPPDATA)\DinoLino\app.publish\</PublishDir>
+    <GenerateManifests>true</GenerateManifests>
+    <!-- The signing certificate holds a private key and is kept out of the repository, so
+         a machine without it would otherwise fail to build rather than fail to publish.
+         Signing is therefore switched on only where the certificate is actually present,
+         beside this file; everywhere else the build and the debugger run unsigned. To
+         publish from a machine, copy DinoLino_TemporaryKey.pfx into the project folder. -->
+    <SignManifests>false</SignManifests>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)\DinoLino_TemporaryKey.pfx')">
+    <ManifestCertificateThumbprint>A59C57EBD0AE3E71F890D99E60003FD5D77F846E</ManifestCertificateThumbprint>
+    <ManifestKeyFile>DinoLino_TemporaryKey.pfx</ManifestKeyFile>
+    <SignManifests>true</SignManifests>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -75,6 +114,8 @@
     <Compile Include="Utilities\Directory\MainWindow.Directory.cs" />
     <Compile Include="Utilities\Directory\Plot.Exporter.cs" />
     <Compile Include="Utilities\Directory\PlotAdvancedWindow.cs" />
+    <Compile Include="Utilities\HelpMenuFiles\AppLog.cs" />
+    <Compile Include="Utilities\HelpMenuFiles\UpdateChecker.cs" />
     <Compile Include="Utilities\Image Calibration\AlignWindow.xaml.cs">
       <DependentUpon>AlignWindow.xaml</DependentUpon>
     </Compile>
@@ -247,6 +288,7 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <None Include="DinoLino_TemporaryKey.pfx" Condition="Exists('DinoLino_TemporaryKey.pfx')" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -257,9 +299,12 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.17.1" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>13.0.4</Version>
+    </PackageReference>
     <PackageReference Include="SharpVectors.Wpf">
-      <Version>1.8.5</Version>
+      <Version>1.8.6</Version>
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
@@ -270,7 +315,18 @@
   <ItemGroup>
     <Resource Include="TestImages\test.png" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <BootstrapperPackage Include=".NETFramework,Version=v4.8">
+      <Visible>False</Visible>
+      <ProductName>Microsoft .NET Framework 4.8 %28x86 and x64%29</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
   <ItemGroup>
     <Resource Include="Icons\FullCreature.svg">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -291,6 +347,13 @@
     </Content>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Replaces the imported target of the same name. Emptying the staging folder is
+       housekeeping before a publish, so a folder that will not delete is worth a warning
+       and not worth refusing to build over. Declared after the import, which is what
+       makes this definition the one that runs. -->
+  <Target Name="CleanPublishFolder">
+    <RemoveDir Directories="$(PublishDir)" ContinueOnError="true" Condition="Exists('$(PublishDir)')" />
+  </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

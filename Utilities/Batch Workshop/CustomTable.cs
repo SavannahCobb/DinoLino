@@ -29,6 +29,86 @@ namespace DinoLino.Utilities
         /// <summary>The mode a selected variable is read from first, or null when it is not selected.</summary>
         public static WorkshopCategory? CategoryOf(string header) => Find(header)?.Category;
 
+        /// <summary>
+        /// True when every variable currently offered under this mode is selected.
+        /// An empty group is never treated as selected.
+        /// </summary>
+        public static bool AreAllSelected(
+            WorkshopCategory category, IEnumerable<string> headers)
+        {
+            var names = headers?
+                .Where(h => !string.IsNullOrWhiteSpace(h))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                ?? new List<string>();
+
+            return names.Count > 0 && names.All(IsSelected);
+        }
+
+        /// <summary>
+        /// Selects or deselects all variables listed under one Custom-tab mode group.
+        /// </summary>
+        public static void SetGroupSelected(
+            WorkshopCategory category, IEnumerable<string> headers, bool selected)
+        {
+            if (selected)
+                SelectAll(category, headers);
+            else
+                DeselectAll(category, headers);
+        }
+
+        /// <summary>
+        /// Adds every variable currently offered under this mode to the custom table.
+        /// Existing selections retain their original order; only newly selected variables
+        /// are appended in the order supplied.
+        /// </summary>
+        public static void SelectAll(
+            WorkshopCategory category, IEnumerable<string> headers)
+        {
+            if (headers == null) return;
+
+            bool changed = false;
+
+            foreach (string header in headers)
+            {
+                if (string.IsNullOrWhiteSpace(header)) continue;
+                if (Find(header) != null) continue;
+
+                _columns.Add(new CustomTableColumn
+                {
+                    Category = category,
+                    Header = header
+                });
+
+                changed = true;
+            }
+
+            if (changed)
+                ProjectSession.MarkChanged();
+        }
+
+        /// <summary>
+        /// Removes every selected variable currently shown under this mode.
+        /// Shared variables are identified by header, so deselecting the group also removes
+        /// a shared variable shown within that group.
+        /// </summary>
+        public static void DeselectAll(
+            WorkshopCategory category, IEnumerable<string> headers)
+        {
+            if (headers == null) return;
+
+            var names = new HashSet<string>(
+                headers.Where(h => !string.IsNullOrWhiteSpace(h)),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (names.Count == 0) return;
+
+            bool changed = _columns.RemoveAll(column => names.Contains(column.Header)) > 0;
+
+            if (changed)
+                ProjectSession.MarkChanged();
+        }
+
         /// <summary>Adds a variable to the table, or takes it out when it is already there.</summary>
         public static void Toggle(WorkshopCategory category, string header)
         {
@@ -48,6 +128,20 @@ namespace DinoLino.Utilities
         private static CustomTableColumn Find(string header) =>
             _columns.FirstOrDefault(c =>
                 string.Equals(c.Header, header, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>One mode's variables, as the custom table's picker lists them.</summary>
+    public sealed class CustomTableGroup
+    {
+        public WorkshopCategory Category;
+        public string Title;
+        public List<string> Headers;
+
+        /// <summary>
+        /// True only when every variable currently listed beneath this group is selected.
+        /// </summary>
+        public bool IsAllSelected =>
+            CustomTableSelection.AreAllSelected(Category, Headers);
     }
 
     /// <summary>
@@ -328,13 +422,5 @@ namespace DinoLino.Utilities
 
             return false;
         }
-    }
-
-    /// <summary>One mode's variables, as the custom table's picker lists them.</summary>
-    public sealed class CustomTableGroup
-    {
-        public WorkshopCategory Category;
-        public string Title;
-        public List<string> Headers;
     }
 }

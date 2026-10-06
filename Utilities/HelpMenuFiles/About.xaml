@@ -12,18 +12,18 @@
         <StackPanel>
             <Grid>
                 <Label Content="DinoLino" HorizontalAlignment="Left" FontWeight="Bold" FontSize="30" VerticalContentAlignment="Bottom"/>
-                <Label Content="V 0.1.0" HorizontalAlignment="Right" VerticalContentAlignment="Bottom" HorizontalContentAlignment="Right"/>
+                <Label Content="V 2.0.0" HorizontalAlignment="Right" VerticalContentAlignment="Bottom" HorizontalContentAlignment="Right"/>
             </Grid>
             <Line x:Name="line" Stroke="#FF585858" X2="{Binding ActualWidth, ElementName=line, Mode=OneWay}" />
             <Grid>
                 <StackPanel Margin="10,10,10,10">
                     <Label Content="Catfort Software c 2018 - 2026" FontWeight="Bold"/>
                     <Label Content="Contributers:" HorizontalAlignment="Center"/>
-                    <Label Content="John Welter"/>
                     <Label Content="Savannah Cobb"/>
+                    <Label Content="John Welter"/>
                     <Label Content="Stephanie Palmer"/>
                     <Label Content="Mason Hintermeister"/>
-                    <Label Content="Fernando Torres-Chiriboga"/>
+                    <Label Content="Fernando Torres Chiriboga"/>
 
                 </StackPanel>
             </Grid>

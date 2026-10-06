@@ -22,17 +22,22 @@ namespace DinoLino.Utilities
     /// </summary>
     public static class OperationRedraw
     {
-        /// <summary>How a redrawn measurement is stroked: the mode's color and width.</summary>
+        /// How a redrawn measurement is stroked and lettered: the mode's color and
+        /// width, and the typeface and size set under Settings ▸ Font.
         private readonly struct LineStyle
         {
-            public LineStyle(Brush color, double thickness)
+            public LineStyle(Brush color, double thickness, FontFamily font, double fontSize)
             {
                 Color = color ?? Brushes.OrangeRed;
                 Thickness = thickness > 0 ? thickness : 2;
+                Font = font;
+                FontSize = fontSize > 0 ? fontSize : WorkMode.DefaultLabelFontSize;
             }
 
             public Brush Color { get; }
             public double Thickness { get; }
+            public FontFamily Font { get; }
+            public double FontSize { get; }
         }
 
         /// <summary>Samples used to draw a parabola, matching the drawing it replaces.</summary>
@@ -43,7 +48,8 @@ namespace DinoLino.Utilities
         /// geometry — an operation saved before geometry was recorded, for instance.
         /// </summary>
         public static List<UIElement> Build(
-            WorkOperation operation, ViewTransform transform, Brush lineColor, double thickness)
+            WorkOperation operation, ViewTransform transform, Brush lineColor, double thickness,
+            FontFamily labelFont = null, double labelFontSize = WorkMode.DefaultLabelFontSize)
         {
             var elements = new List<UIElement>();
 
@@ -54,7 +60,7 @@ namespace DinoLino.Utilities
             // them where they fall would put the measurement in the wrong place.
             if (!transform.IsValid) return elements;
 
-            var style = new LineStyle(lineColor, thickness);
+            var style = new LineStyle(lineColor, thickness, labelFont, labelFontSize);
 
             var points = new List<Point>(operation.ImagePoints.Count);
             foreach (var point in operation.ImagePoints)
@@ -236,18 +242,20 @@ namespace DinoLino.Utilities
             return polyline;
         }
 
-        // Offset and size follow the labels the modes draw, so a reopened triangle
-        // reads the way it did when it was measured.
+        // Offset, size and typeface follow the labels the modes draw, so a reopened
+        // triangle is lettered the way a newly measured one is.
         private static TextBlock MakeLabel(string text, Point at, LineStyle style)
         {
             var label = new TextBlock
             {
                 Text = text,
                 Foreground = style.Color,
-                FontSize = 28,
+                FontSize = style.FontSize,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center
             };
+
+            if (style.Font != null) label.FontFamily = style.Font;
 
             Canvas.SetLeft(label, at.X + 5);
             Canvas.SetTop(label, at.Y + 5);
