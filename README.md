@@ -5,7 +5,7 @@ An open source software for biological image analysis
 
 Installation steps
 
-This program is compatible with Windows. Download the zip file from the latest release "DinoLino.v3.0.0.zip" and extract all of it. Run setup.exe from the extracted folder to begin installation. Windows may warn that the publisher is unknown; choose "More info", then "Run anyway".
+This program is compatible with Windows. Download the zip file from the latest release "DinoLino.v3.0.1.zip" and extract all of it. Run setup.exe from the extracted folder to begin installation. Windows may warn that the publisher is unknown; choose "More info", then "Run anyway".
 
 Updating
 
